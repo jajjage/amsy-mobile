@@ -1,0 +1,109 @@
+{
+  "expo": {
+    "name": "Amsy Data",
+    "slug": "amsy-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/ios-dark.png",
+    "scheme": "amsydatasub",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.amsy.amsydatasub",
+      "jsEngine": "hermes",
+      "supportsTablet": true,
+      "associatedDomains": [
+        "webcredentials:amsydatasub.com"
+      ],
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "icon": {
+        "light": "./assets/images/ios-light.png",
+        "dark": "./assets/images/ios-dark.png",
+        "tinted": "./assets/images/ios-tinted.png"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "monochromeImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.amsy.amsydatasub",
+      "jsEngine": "hermes",
+      "permissions": [
+        "NOTIFICATIONS"
+      ],
+      "newArchEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/icon.png"
+    },
+    "assetBundlePatterns": [
+      "assets/images/**/*",
+      "assets/optimized/**/*",
+      "assets/fonts/**/*"
+    ],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "-keep class coil3.PlatformContext\n-keep class coil3.network.okhttp.OkHttpNetworkFetcher { *; }\n-keep class okhttp3.OkHttpClient { *; }\n-keep class okhttp3.Request { *; }\n-keep class okhttp3.Response { *; }\n-keep class com.google.firebase.** { *; }\n-keep class expo.modules.** { *; }\n-dontwarn coil3.**\n-dontwarn com.google.firebase.**",
+            "enableMinifyInReleaseBuilds": true
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/ic_notification.png",
+          "color": "#2dd4bf"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon-dark.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/images/splash-icon-light.png",
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "./plugins/withOptionalBiometrics.js",
+      "expo-secure-store",
+      "./plugins/withAndroidSplits.js"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "104c83f5-4815-4cb3-a2f5-2a8287c10af9"
+      }
+    },
+    "owner": "jajjage"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.organizeImports": "explicit",
+    "source.sortMembers": "explicit"
+  },
+  "cSpell.words": [
+    "airtel",
+    "androidx",
+    "applinks",
+    "bouncycastle",
+    "CBOR",
+    "conscrypt",
+    "dimezis",
+    "dontwarn",
+    "etisalat",
+    "Gluestack",
+    "gorhom",
+    "Gson",
+    "jajjage",
+    "keepclassmembers",
+    "mullahkano",
+    "nexusdatasub",
+    "okhttp",
+    "openjsse",
+    "Parcelable",
+    "prefs",
+    "Pressable",
+    "Proguard",
+    "Safzan",
+    "Topup",
+    "webauthn",
+    "webcredentials"
+  ]
+}

@@ -1,0 +1,791 @@
+/**
+ * CheckoutModal - Multi-state checkout bottom sheet
+ * Per mobile-airtime-data-guide.md Section 4 - Payment Waterfall
+ */
+
+import { ShareTransactionSheet } from "@/components/ShareTransactionSheet";
+import { darkColors, designTokens, lightColors } from "@/constants/palette";
+import { NETWORK_PROVIDERS, NetworkProvider } from "@/lib/detectNetwork";
+import { Transaction } from "@/types/wallet.types";
+import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
+import * as Haptics from "expo-haptics";
+import {
+  CheckCircle,
+  RefreshCw,
+  Share2,
+  XCircle
+} from "lucide-react-native";
+import React, { forwardRef, useCallback, useMemo } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+  useColorScheme
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+export type CheckoutMode = "checkout" | "success" | "failed";
+
+export interface CheckoutData {
+  productName: string;
+  recipientPhone: string;
+  amount: number;
+  originalAmount?: number;
+  network?: NetworkProvider;
+  transactionId?: string;
+  errorMessage?: string;
+  bonusToEarn?: number;
+  // Price breakdown details
+  supplierCost?: number;
+  markup?: number;
+  markupPercent?: number;
+  faceValue?: number;
+}
+
+interface CheckoutModalProps {
+  data: CheckoutData | null;
+  mode: CheckoutMode;
+  walletBalance: number;
+  cashbackBalance: number;
+  useCashback: boolean;
+  onUseCashbackChange: (value: boolean) => void;
+  onConfirm: () => void;
+  onRetry: () => void;
+  onClose: () => void;
+  isLoading?: boolean;
+}
+
+export const CheckoutModal = forwardRef<BottomSheet, CheckoutModalProps>(
+  (
+    {
+      data,
+      mode,
+      walletBalance,
+      cashbackBalance,
+      useCashback,
+      onUseCashbackChange,
+      onConfirm,
+      onRetry,
+      onClose,
+      isLoading = false,
+    },
+    ref
+  ) => {
+    const insets = useSafeAreaInsets();
+    const colorScheme = useColorScheme();
+    const isDark = colorScheme === "dark";
+    const colors = isDark ? darkColors : lightColors;
+
+    const snapPoints = useMemo(() => {
+      if (mode === "checkout") return ["75%"]; // Increased height for safe area
+      return ["55%"];
+    }, [mode]);
+
+    const [showShareSheet, setShowShareSheet] = React.useState(false);
+
+    // Calculate payable amount
+    const cashbackToUse = useCashback
+      ? Math.min(cashbackBalance, data?.amount || 0)
+      : 0;
+    const totalToPay = (data?.amount || 0) - cashbackToUse;
+    
+    // Add small tolerance (0.01) for floating point precision issues
+    const insufficientBalance = totalToPay > (walletBalance + 0.01);
+    const insufficientBalanceExact = totalToPay > walletBalance; // used for text feedback if needed
+
+    // Helper to create a Transaction object from checkout data for the receipt
+    const createTransactionFromCheckoutData = useCallback((): Transaction | null => {
+      if (!data) return null;
+
+      // Determine product type based on product name
+      const isData = data.productName.toLowerCase().includes("data") || 
+                     data.productName.toLowerCase().includes("gb") || 
+                     data.productName.toLowerCase().includes("mb");
+
+      return {
+        id: data.transactionId || `REF-${Date.now()}`,
+        walletId: "current-wallet", // Placeholder
+        userId: "current-user", // Placeholder
+        direction: "debit",
+        amount: data.amount, // This is the amount paid
+        balanceAfter: walletBalance - totalToPay, // Approximate
+        method: "wallet",
+        relatedType: "topup_request",
+        cashbackUsed: cashbackToUse,
+        productCode: data.productName,
+        denomAmount: data.faceValue || data.amount,
+        createdAt: new Date(),
+        related: {
+          status: "completed",
+          recipient_phone: data.recipientPhone,
+          operatorCode: data.network,
+          type: isData ? "data" : "airtime",
+        }
+      } as Transaction;
+    }, [data, cashbackToUse, walletBalance, totalToPay]);
+
+    // Share receipt
+    const handleShare = useCallback(() => {
+      if (!data) return;
+      Haptics.selectionAsync();
+      setShowShareSheet(true);
+    }, [data]);
+
+    if (!data) return null;
+
+    const networkInfo = data.network ? NETWORK_PROVIDERS[data.network] : null;
+
+    // Render based on mode
+    const renderContent = () => {
+      const contentStyle = [
+        styles.content,
+        { paddingBottom: Math.max(insets.bottom, 24) } // Add safe area padding
+      ];
+
+      switch (mode) {
+        case "success":
+          return (
+            <View style={contentStyle}>
+              <View
+                style={[
+                  styles.statusIcon,
+                  { backgroundColor: `${colors.success}20` },
+                ]}
+              >
+                <CheckCircle size={48} color={colors.success} />
+              </View>
+
+              <Text style={[styles.statusTitle, { color: colors.foreground }]}>
+                Transaction Successful!
+              </Text>
+
+              <Text
+                style={[styles.statusSubtitle, { color: colors.textSecondary }]}
+              >
+                {data.productName} sent to {data.recipientPhone}
+              </Text>
+
+              <View
+                style={[styles.amountCard, { backgroundColor: colors.muted }]}
+              >
+                <Text
+                  style={[styles.amountLabel, { color: colors.textSecondary }]}
+                >
+                  Amount
+                </Text>
+                <Text style={[styles.amountValue, { color: colors.success }]}>
+                  ₦{data.amount.toLocaleString()}
+                </Text>
+              </View>
+
+              {data.transactionId && (
+                <Text style={[styles.refText, { color: colors.textTertiary }]}>
+                  Ref: {data.transactionId}
+                </Text>
+              )}
+
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={[
+                    styles.shareButton,
+                    { borderColor: colors.primary },
+                  ]}
+                  onPress={handleShare}
+                >
+                  <Share2 size={18} color={colors.primary} />
+                  <Text style={[styles.shareText, { color: colors.primary }]}>
+                    Share
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.doneButton, { backgroundColor: colors.primary }]}
+                  onPress={onClose}
+                >
+                  <Text
+                    style={[
+                      styles.doneText,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
+                    Done
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+
+        case "failed":
+          return (
+            <View style={contentStyle}>
+              <View
+                style={[
+                  styles.statusIcon,
+                  { backgroundColor: `${colors.destructive}20` },
+                ]}
+              >
+                <XCircle size={48} color={colors.destructive} />
+              </View>
+
+              <Text style={[styles.statusTitle, { color: colors.foreground }]}>
+                Transaction Failed
+              </Text>
+
+              <Text
+                style={[styles.statusSubtitle, { color: colors.textSecondary }]}
+              >
+                {data.errorMessage || "Something went wrong. Please try again."}
+              </Text>
+
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={[
+                    styles.retryButton,
+                    { backgroundColor: colors.primary },
+                  ]}
+                  onPress={onRetry}
+                >
+                  <RefreshCw size={18} color={colors.primaryForeground} />
+                  <Text
+                    style={[
+                      styles.retryText,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
+                    Try Again
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.cancelButton, { borderColor: colors.border }]}
+                  onPress={onClose}
+                >
+                  <Text
+                    style={[styles.cancelText, { color: colors.textSecondary }]}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+
+        default:
+          // Checkout mode
+          return (
+            <View style={contentStyle}>
+              <Text style={[styles.title, { color: colors.foreground }]}>
+                Confirm Purchase
+              </Text>
+
+              {/* Hero Amount */}
+              <View style={styles.heroSection}>
+                <Text style={[styles.heroAmount, { color: colors.foreground }]}>
+                  ₦{(totalToPay).toLocaleString()}
+                </Text>
+                {data.originalAmount && data.originalAmount > data.amount && (
+                  <Text style={[styles.heroStrikethrough, { color: colors.textTertiary }]}>
+                    ₦{data.originalAmount.toLocaleString()}
+                  </Text>
+                )}
+              </View>
+
+              {/* Details List */}
+              <View style={styles.detailsList}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                    Product Name
+                  </Text>
+                  <View style={styles.detailValueContainer}>
+                     {networkInfo && (
+                       <View style={[styles.miniLogo, { backgroundColor: "transparent" }]}>
+                          <Image 
+                            source={networkInfo.logo} 
+                            style={{ width: 16, height: 16, borderRadius: 8 }} 
+                            resizeMode="cover"
+                          />
+                       </View>
+                     )}
+                    <Text style={[styles.detailValue, { color: colors.foreground }]}>
+                      {data.productName.includes("Airtime") ? "Airtime" : "Mobile Data"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                    Recipient Mobile
+                  </Text>
+                  <Text style={[styles.detailValue, { color: colors.foreground }]}>
+                    {data.recipientPhone}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                    Details
+                  </Text>
+                  <Text style={[styles.detailValue, { color: colors.foreground }]}>
+                    {data.productName}
+                  </Text>
+                </View>
+
+                 <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                    Amount to Pay
+                  </Text>
+                  <Text style={[styles.detailValue, { color: colors.foreground, fontWeight: '700' }]}>
+                    ₦{totalToPay.toLocaleString()}
+                  </Text>
+                </View>
+
+                 {cashbackBalance > 0 && (
+                    <View style={[styles.detailRow, { marginTop: 4 }]}>
+                       <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                          Use Cashback (₦{cashbackBalance.toLocaleString()})
+                       </Text>
+                      <Pressable 
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          onUseCashbackChange(!useCashback);
+                        }}
+                        style={[
+                          styles.customToggleTrack,
+                          { backgroundColor: useCashback ? colors.success : (isDark ? colors.border : '#E2E8F0') }
+                        ]}
+                      >
+                        <View 
+                          style={[
+                            styles.customToggleDot,
+                            { 
+                              transform: [{ translateX: useCashback ? 16 : 0 }],
+                              backgroundColor: '#FFFFFF' 
+                            }
+                          ]} 
+                        />
+                      </Pressable>
+                    </View>
+                 )}
+
+                 {/* Bonus to Earn */}
+                 {data.bonusToEarn !== undefined && data.bonusToEarn > 0 && (
+                    <View style={styles.detailRow}>
+                       <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                          Bonus to Earn
+                       </Text>
+                       <Text style={{ color: colors.success, fontSize: 14, fontWeight: '600' }}>
+                          +₦{data.bonusToEarn.toFixed(2)} Cashback
+                       </Text>
+                    </View>
+                 )}
+              </View>
+
+              {/* Payment Method Section */}
+              <View style={styles.paymentSection}>
+                 <Text style={[styles.paymentTitle, { color: colors.foreground }]}>Payment Method</Text>
+                 <View style={[styles.paymentCard, { borderColor: colors.primary, backgroundColor: `${colors.primary}05` }]}>
+                    <View style={styles.paymentCardContent}>
+                       <Text style={[styles.paymentBalance, { color: colors.foreground }]}>
+                          Available Balance (₦{walletBalance.toLocaleString()})
+                       </Text>
+                       <Text style={[styles.paymentDeduction, { color: colors.textSecondary }]}>
+                          Wallet -₦{totalToPay.toLocaleString()}
+                       </Text>
+                    </View>
+                    <View style={[styles.checkCircle, { backgroundColor: colors.primary }]}>
+                       <CheckCircle size={14} color="#FFF" />
+                    </View>
+                 </View>
+              </View>
+
+              {/* Insufficient Balance Warning */}
+              {insufficientBalance && (
+                <Text style={[styles.warningText, { color: colors.destructive }]}>
+                  Insufficient balance. Please add funds.
+                </Text>
+              )}
+
+              {/* Pay Button */}
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  {
+                    backgroundColor:
+                      insufficientBalance || isLoading
+                        ? colors.muted
+                        : colors.primary,
+                    opacity: isLoading ? 0.8 : 1,
+                  },
+                ]}
+                onPress={onConfirm}
+                disabled={insufficientBalance || isLoading}
+                activeOpacity={0.8}
+              >
+                {isLoading ? (
+                  <>
+                    <ActivityIndicator color={colors.primaryForeground} size="small" />
+                    <Text
+                      style={[
+                        styles.confirmText,
+                        {
+                          color: colors.primaryForeground,
+                          marginLeft: 8,
+                        },
+                      ]}
+                    >
+                      Processing...
+                    </Text>
+                  </>
+                ) : (
+                  <Text
+                    style={[
+                      styles.confirmText,
+                      {
+                        color: insufficientBalance
+                          ? colors.textDisabled
+                          : colors.primaryForeground,
+                      },
+                    ]}
+                  >
+                    Pay ₦{(totalToPay).toLocaleString()}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          );
+      }
+    };
+
+    return (
+      <BottomSheet
+        ref={ref}
+        index={-1}
+        snapPoints={snapPoints}
+        enablePanDownToClose
+        onClose={onClose}
+        backgroundStyle={{
+          backgroundColor: colors.card,
+        }}
+        handleIndicatorStyle={{
+          backgroundColor: colors.border,
+          width: 40,
+        }}
+      >
+        <BottomSheetView style={styles.container}>
+          {renderContent()}
+
+          {/* Share Receipt Sheet */}
+          {createTransactionFromCheckoutData() && (
+            <ShareTransactionSheet
+              visible={showShareSheet}
+              onClose={() => setShowShareSheet(false)}
+              transaction={createTransactionFromCheckoutData() as Transaction}
+            />
+          )}
+        </BottomSheetView>
+      </BottomSheet>
+    );
+  }
+);
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  content: {
+    padding: designTokens.spacing.lg,
+    flex: 1,
+  },
+  title: {
+    fontSize: designTokens.fontSize.xl,
+    fontWeight: "700",
+    marginBottom: designTokens.spacing.lg,
+    textAlign: "center",
+  },
+  summaryCard: {
+    borderRadius: designTokens.radius.lg,
+    padding: designTokens.spacing.md,
+    marginBottom: designTokens.spacing.md,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: designTokens.spacing.xs,
+  },
+  summaryLabel: {
+    fontSize: designTokens.fontSize.sm,
+  },
+  summaryValue: {
+    fontSize: designTokens.fontSize.sm,
+    fontWeight: "500",
+  },
+  recipientRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: designTokens.spacing.xs,
+  },
+  networkTag: {
+    fontSize: designTokens.fontSize.xs,
+    fontWeight: "600",
+  },
+  divider: {
+    height: 1,
+    marginVertical: designTokens.spacing.sm,
+  },
+  amountText: {
+    fontSize: designTokens.fontSize.lg,
+    fontWeight: "700",
+  },
+  cashbackRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: designTokens.spacing.md,
+    borderRadius: designTokens.radius.lg,
+    marginBottom: designTokens.spacing.md,
+  },
+  cashbackInfo: {
+    flex: 1,
+  },
+  cashbackLabel: {
+    fontSize: designTokens.fontSize.sm,
+    fontWeight: "500",
+  },
+  cashbackAmount: {
+    fontSize: designTokens.fontSize.xs,
+    marginTop: 2,
+  },
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: designTokens.spacing.md,
+  },
+  totalLabel: {
+    fontSize: designTokens.fontSize.base,
+    fontWeight: "600",
+  },
+  totalValue: {
+    fontSize: designTokens.fontSize["2xl"],
+    fontWeight: "700",
+  },
+  warningText: {
+    fontSize: designTokens.fontSize.sm,
+    textAlign: "center",
+    marginBottom: designTokens.spacing.md,
+  },
+  confirmButton: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: designTokens.spacing.md,
+    borderRadius: designTokens.radius.lg,
+    gap: designTokens.spacing.sm,
+    marginTop: "auto",
+  },
+  confirmText: {
+    fontSize: designTokens.fontSize.lg,
+    fontWeight: "600",
+  },
+  // Success/Failed styles
+  statusIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    alignSelf: "center",
+    marginBottom: designTokens.spacing.lg,
+  },
+  statusTitle: {
+    fontSize: designTokens.fontSize.xl,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: designTokens.spacing.xs,
+  },
+  statusSubtitle: {
+    fontSize: designTokens.fontSize.sm,
+    textAlign: "center",
+    marginBottom: designTokens.spacing.lg,
+  },
+  amountCard: {
+    alignItems: "center",
+    padding: designTokens.spacing.lg,
+    borderRadius: designTokens.radius.lg,
+    marginBottom: designTokens.spacing.md,
+  },
+  amountLabel: {
+    fontSize: designTokens.fontSize.sm,
+    marginBottom: designTokens.spacing.xs,
+  },
+  amountValue: {
+    fontSize: designTokens.fontSize["3xl"],
+    fontWeight: "700",
+  },
+  refText: {
+    fontSize: designTokens.fontSize.xs,
+    textAlign: "center",
+    marginBottom: designTokens.spacing.lg,
+  },
+  actions: {
+    flexDirection: "row",
+    gap: designTokens.spacing.md,
+    marginTop: "auto",
+  },
+  shareButton: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: designTokens.spacing.md,
+    borderRadius: designTokens.radius.lg,
+    borderWidth: 1.5,
+    gap: designTokens.spacing.sm,
+  },
+  shareText: {
+    fontSize: designTokens.fontSize.base,
+    fontWeight: "600",
+  },
+  doneButton: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: designTokens.spacing.md,
+    borderRadius: designTokens.radius.lg,
+  },
+  doneText: {
+    fontSize: designTokens.fontSize.base,
+    fontWeight: "600",
+  },
+  retryButton: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: designTokens.spacing.md,
+    borderRadius: designTokens.radius.lg,
+    gap: designTokens.spacing.sm,
+  },
+  retryText: {
+    fontSize: designTokens.fontSize.base,
+    fontWeight: "600",
+  },
+  cancelButton: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: designTokens.spacing.md,
+    borderRadius: designTokens.radius.lg,
+    borderWidth: 1,
+  },
+  cancelText: {
+    fontSize: designTokens.fontSize.base,
+    fontWeight: "500",
+  },
+  // New Styles
+  heroSection: {
+    alignItems: "center",
+    marginBottom: designTokens.spacing.lg,
+  },
+  heroAmount: {
+    fontSize: 32, // Large font per screenshot
+    fontWeight: "700",
+  },
+  heroStrikethrough: {
+    fontSize: designTokens.fontSize.sm,
+    textDecorationLine: "line-through",
+    marginTop: 2,
+  },
+  detailsList: {
+    marginBottom: designTokens.spacing.lg,
+    gap: designTokens.spacing.md,
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  detailLabel: {
+    fontSize: designTokens.fontSize.sm,
+    flex: 1,
+  },
+  detailValueContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: designTokens.spacing.xs,
+  },
+  detailValue: {
+    fontSize: designTokens.fontSize.sm,
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  miniLogo: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  miniLogoText: {
+    fontSize: 8,
+    color: "#FFF",
+    fontWeight: "700",
+  },
+  paymentSection: {
+    marginTop: "auto",
+    marginBottom: designTokens.spacing.lg,
+  },
+  paymentTitle: {
+    fontSize: designTokens.fontSize.sm,
+    fontWeight: "600",
+    marginBottom: designTokens.spacing.sm,
+  },
+  paymentCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: designTokens.spacing.md,
+    borderRadius: designTokens.radius.md,
+    borderWidth: 1,
+    justifyContent: "space-between",
+  },
+  paymentCardContent: {
+    gap: 2,
+  },
+  paymentBalance: {
+    fontSize: designTokens.fontSize.sm,
+    fontWeight: "600",
+  },
+  paymentDeduction: {
+    fontSize: designTokens.fontSize.xs,
+  },
+  checkCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  customToggleTrack: {
+    width: 36,
+    height: 20,
+    borderRadius: 10,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  customToggleDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    elevation: 2,
+  },
+});
