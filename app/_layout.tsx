@@ -1,3 +1,4 @@
+import '../global.css';
 import '@/lib/crypto-polyfill';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
@@ -23,7 +24,6 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
-import '../global.css';
 
 /**
  * Amsy Light Theme for React Navigation
