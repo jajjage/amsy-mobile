@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "921702244146",
+    "project_id": "amsy-32b27",
+    "storage_bucket": "amsy-32b27.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:921702244146:android:d1f8b4d71b9c54dc4c412b",
+        "android_client_info": {
+          "package_name": "com.amsy.amsydatasub"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBnOICgcXqX8qCTIP0_4fR0eMrvvtpTGSU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
