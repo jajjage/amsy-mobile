@@ -1,4 +1,3 @@
-import '../global.css';
 import '@/lib/crypto-polyfill';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
@@ -12,6 +11,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { Toaster } from 'sonner-native';
+import '../global.css';
 
 import { darkColors, lightColors } from '@/constants/palette';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
@@ -60,8 +60,8 @@ const AmsyDarkTheme = {
 };
 
 export {
-    // Catch any errors thrown by the Layout component.
-    ErrorBoundary
+  // Catch any errors thrown by the Layout component.
+  ErrorBoundary
 } from 'expo-router';
 
 export const unstable_settings = {
