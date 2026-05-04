@@ -5,7 +5,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Stack, useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { useState } from "react";
-import { ActivityIndicator, ScrollView, Switch, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Switch, TouchableOpacity, View } from "react-native";
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -171,9 +171,12 @@ export default function NotificationsScreen() {
                   <HStack
                     key={item.key}
                     space="md"
-                    className={`flex-row items-center justify-between py-3 px-4 ${
-                      itemIndex < group.items.length - 1 ? "border-b border-outline-100" : ""
-                    }`}
+                    className="flex-row items-center justify-between py-3 px-4"
+                    style={
+                      itemIndex < group.items.length - 1
+                        ? styles.groupItemDivider
+                        : undefined
+                    }
                   >
                     <VStack space="xs" className="flex-1">
                       <Heading size="xs" className="font-semibold">{item.label}</Heading>
@@ -210,4 +213,11 @@ export default function NotificationsScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  groupItemDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#f4f4f5',
+  },
+});
 

@@ -124,15 +124,15 @@ export default function SecurityHubScreen() {
                       <Text size="xs" className="text-typography-500">{item.description}</Text>
                     </VStack>
                   </HStack>
-                  <HStack space="md" className="items-center">
+                    <HStack space="md" className="items-center">
                     {item.badge && (
                       <Text
                         size="xs"
-                        className={`font-semibold ${
-                          item.badge === "✓ Set"
-                            ? "text-success-600"
-                            : "text-typography-500"
-                        }`}
+                        className="font-semibold"
+                        style={{
+                          color:
+                            item.badge === "✓ Set" ? "#16a34a" : "#737373",
+                        }}
                       >
                         {item.badge}
                       </Text>

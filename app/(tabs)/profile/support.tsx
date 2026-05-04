@@ -3,7 +3,7 @@ import { darkColors, lightColors } from "@/constants/palette";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Stack, useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
-import { Linking, Pressable, ScrollView, TouchableOpacity, useColorScheme } from "react-native";
+import { Linking, Pressable, ScrollView, StyleSheet, TouchableOpacity, useColorScheme } from "react-native";
 
 export default function SupportScreen() {
   const router = useRouter();
@@ -109,7 +109,15 @@ export default function SupportScreen() {
         <Box className="bg-background-0 border border-outline-200 rounded-lg p-3">
           <VStack space="lg">
             {faqItems.map((item, index) => (
-              <Box key={index} className={index !== faqItems.length - 1 ? "pb-3 border-b border-outline-200" : ""}>
+              <Box
+                key={index}
+                className="pb-3"
+                style={
+                  index !== faqItems.length - 1
+                    ? styles.faqItemDivider
+                    : undefined
+                }
+              >
                 <HStack space="md" className="items-start mb-2">
                   <FontAwesome name="question-circle" size={16} color="#2dd4bf" />
                   <Heading size="xs" className="flex-1 font-semibold text-typography-700">{item.question}</Heading>
@@ -132,5 +140,12 @@ export default function SupportScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  faqItemDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+});
 
 

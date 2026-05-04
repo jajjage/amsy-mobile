@@ -24,36 +24,36 @@ interface AlertProps {
 
 const VARIANTS = {
   success: {
-    bg: 'bg-green-50',
-    border: 'border-green-200',
+    bg: '#f0fdf4',
+    border: '#bbf7d0',
     icon: 'checkmark-circle' as const,
     iconColor: '#16A34A',
-    titleColor: 'text-green-800',
-    textColor: 'text-green-700',
+    titleColor: '#166534',
+    textColor: '#15803d',
   },
   error: {
-    bg: 'bg-red-50',
-    border: 'border-red-200',
+    bg: '#fef2f2',
+    border: '#fecaca',
     icon: 'alert-circle' as const,
     iconColor: '#DC2626',
-    titleColor: 'text-red-800',
-    textColor: 'text-red-700',
+    titleColor: '#991b1b',
+    textColor: '#b91c1c',
   },
   warning: {
-    bg: 'bg-amber-50',
-    border: 'border-amber-200',
+    bg: '#fffbeb',
+    border: '#fde68a',
     icon: 'warning' as const,
     iconColor: '#D97706',
-    titleColor: 'text-amber-800',
-    textColor: 'text-amber-700',
+    titleColor: '#92400e',
+    textColor: '#b45309',
   },
   info: {
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
+    bg: '#eff6ff',
+    border: '#bfdbfe',
     icon: 'information-circle' as const,
     iconColor: '#2563EB',
-    titleColor: 'text-blue-800',
-    textColor: 'text-blue-700',
+    titleColor: '#1e40af',
+    textColor: '#1d4ed8',
   },
 };
 
@@ -69,8 +69,14 @@ export function Alert({
 
   return (
     <View
-      className={`${config.bg} ${config.border} border rounded-xl p-3 ${className}`}
-      style={styles.container}
+      className="border rounded-xl p-3"
+      style={[
+        styles.container,
+        {
+          backgroundColor: config.bg,
+          borderColor: config.border,
+        },
+      ]}
     >
       <HStack space="sm" className="items-start">
         {/* Icon */}
@@ -81,11 +87,13 @@ export function Alert({
         {/* Content */}
         <VStack space="xs" className="flex-1">
           {title && (
-            <Text className={`${config.titleColor} font-semibold text-sm`}>
+            <Text className="font-semibold text-sm" style={{ color: config.titleColor }}>
               {title}
             </Text>
           )}
-          <Text className={`${config.textColor} text-sm`}>{message}</Text>
+          <Text className="text-sm" style={{ color: config.textColor }}>
+            {message}
+          </Text>
         </VStack>
 
         {/* Close button */}

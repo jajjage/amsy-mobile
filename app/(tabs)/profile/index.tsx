@@ -117,9 +117,7 @@ export default function ProfileHubScreen() {
                 <Card
                   size="md"
                   variant={pressed ? "filled" : "elevated"}
-                  className={`rounded-xl border border-outline-200 ${
-                    pressed ? "bg-background-100" : "bg-background-0"
-                  }`}
+                  className="rounded-xl border border-outline-200"
                 >
                   <HStack className="flex-row items-center justify-between w-full">
                     <HStack space="md" className="flex-1 items-center">

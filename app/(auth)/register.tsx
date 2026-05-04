@@ -347,7 +347,8 @@ export default function RegisterScreen() {
                   size="xl"
                   onPress={handleSubmit(onSubmit)}
                   isDisabled={!canSubmit}
-                  className={`mt-2 rounded-xl bg-primary-500 ${!canSubmit ? 'opacity-60' : ''}`}
+                  className="mt-2 rounded-xl bg-primary-500"
+                  style={{ opacity: canSubmit ? 1 : 0.6 }}
                 >
                   {isPending ? (
                     <ButtonSpinner color="white" />
