@@ -1,7 +1,7 @@
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Redirect, Tabs, useSegments } from 'expo-router';
-import { Briefcase, Home, Trophy, User, Users } from 'lucide-react-native';
+import { Briefcase, HandCoins, Home, Trophy, User } from 'lucide-react-native';
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -78,10 +78,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="agent"
+        options={{
+          title: 'Agent',
+          tabBarIcon: ({ color }) => <HandCoins size={20} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="referral"
         options={{
-          title: 'Referral',
-          tabBarIcon: ({ color }) => <Users size={20} color={color} />,
+          href: null,
         }}
       />
       

@@ -1,7 +1,8 @@
 import { useRegister } from "@/hooks/useAuth";
+import { agentService, normalizeAgentCodeValidation } from "@/services/agent.service";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Link } from "expo-router";
-import React, { useState } from "react";
+import { Link, useLocalSearchParams } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
   Keyboard,
@@ -51,7 +52,7 @@ const registerSchema = z
       .string()
       .min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
-    referralCode: z.string().optional(),
+    agentCode: z.string().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
@@ -64,10 +65,22 @@ export default function RegisterScreen() {
   const { mutate: register, isPending, errorMessage, reset } = useRegister();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isValidatingAgentCode, setIsValidatingAgentCode] = useState(false);
+  const [agentCodeMessage, setAgentCodeMessage] = useState<string | null>(null);
+  const params = useLocalSearchParams<{
+    agentCode?: string;
+    code?: string;
+  }>();
+  const initialAgentCode = useMemo(() => {
+    const value = params.agentCode || params.code;
+    return typeof value === "string" ? value.trim().toUpperCase() : "";
+  }, [params.agentCode, params.code]);
 
   const {
     control,
     handleSubmit,
+    setError,
+    setValue,
     formState: { errors, isValid },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -77,20 +90,49 @@ export default function RegisterScreen() {
       phoneNumber: "",
       password: "",
       confirmPassword: "",
-      referralCode: "",
+      agentCode: initialAgentCode,
     },
     mode: "onChange",
   });
 
-  const canSubmit = isValid && !isPending;
+  useEffect(() => {
+    if (initialAgentCode) {
+      setValue("agentCode", initialAgentCode, { shouldValidate: true });
+      setAgentCodeMessage("Agent code applied from your invite link.");
+    }
+  }, [initialAgentCode, setValue]);
 
-  const onSubmit = (data: RegisterFormData) => {
+  const canSubmit = isValid && !isPending && !isValidatingAgentCode;
+
+  const onSubmit = async (data: RegisterFormData) => {
+    const normalizedAgentCode = data.agentCode?.trim().toUpperCase();
+    if (normalizedAgentCode) {
+      try {
+        setIsValidatingAgentCode(true);
+        const response = await agentService.validateAgentCode(normalizedAgentCode);
+        const validation = normalizeAgentCodeValidation(response);
+        if (!validation.valid) {
+          setError("agentCode", { message: validation.message || "Invalid agent code" });
+          return;
+        }
+      } catch (error: any) {
+        setError("agentCode", {
+          message:
+            error?.response?.data?.message ||
+            "Could not validate this agent code. Please try again.",
+        });
+        return;
+      } finally {
+        setIsValidatingAgentCode(false);
+      }
+    }
+
     register({
       fullName: data.fullName,
       email: data.email,
       phoneNumber: data.phoneNumber,
       password: data.password,
-      referralCode: data.referralCode || undefined,
+      agentCode: normalizedAgentCode || undefined,
     });
   };
 
@@ -311,23 +353,27 @@ export default function RegisterScreen() {
                   )}
                 </FormControl>
 
-                {/* Referral Code Field (Optional) */}
-                {/* <FormControl isInvalid={!!errors.referralCode}>
+                {/* Agent Code Field (Optional) */}
+                <FormControl isInvalid={!!errors.agentCode}>
                   <FormControlLabel className="mb-2">
                     <FormControlLabelText className="text-typography-700 font-medium">
-                      Referral Code (Optional)
+                      Agent Code (Optional)
                     </FormControlLabelText>
                   </FormControlLabel>
                   <Controller
                     control={control}
-                    name="referralCode"
+                    name="agentCode"
                     render={({ field: { onChange, onBlur, value } }) => (
                       <Input variant="outline" size="xl" className="bg-background-0 rounded-xl">
                         <InputField
-                          placeholder="E.g. ABC123"
+                          placeholder="E.g. AG123ABC"
                           autoCapitalize="characters"
                           onBlur={onBlur}
-                          onChangeText={onChange}
+                          onChangeText={(nextValue) => {
+                            const normalized = nextValue.toUpperCase();
+                            setAgentCodeMessage(null);
+                            onChange(normalized);
+                          }}
                           value={value}
                           className="text-typography-900"
                           placeholderTextColor="#9CA3AF"
@@ -335,12 +381,17 @@ export default function RegisterScreen() {
                       </Input>
                     )}
                   />
-                  {errors.referralCode && (
+                  {agentCodeMessage && !errors.agentCode && (
+                    <Text size="xs" className="mt-1 text-typography-500">
+                      {agentCodeMessage}
+                    </Text>
+                  )}
+                  {errors.agentCode && (
                     <FormControlError className="mt-1">
-                      <FormControlErrorText>{errors.referralCode.message}</FormControlErrorText>
+                      <FormControlErrorText>{errors.agentCode.message}</FormControlErrorText>
                     </FormControlError>
                   )}
-                </FormControl> */}
+                </FormControl>
 
                 {/* Register Button */}
                 <Button
@@ -350,7 +401,7 @@ export default function RegisterScreen() {
                   className="mt-2 rounded-xl bg-primary-500"
                   style={{ opacity: canSubmit ? 1 : 0.6 }}
                 >
-                  {isPending ? (
+                  {isPending || isValidatingAgentCode ? (
                     <ButtonSpinner color="white" />
                   ) : (
                     <ButtonText className="text-white">

@@ -5,6 +5,7 @@ export interface RegisterRequest {
   phoneNumber: string;
   fullName?: string;
   referralCode?: string;
+  agentCode?: string;
 }
 
 export interface LoginRequest {
