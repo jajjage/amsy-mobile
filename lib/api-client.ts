@@ -1,5 +1,5 @@
 // lib/api-client.ts
-import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import { tokenStorage, userStorage } from "./secure-store";
 
 const BASE_URL = process.env.EXPO_PUBLIC_AUTH_URL || "http://10.152.118.138:3000/api/v1";
@@ -22,6 +22,67 @@ const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
 });
+
+const getErrorMessage = (error: unknown): string => {
+  if (!axios.isAxiosError(error)) {
+    return error instanceof Error ? error.message : "";
+  }
+
+  const data = error.response?.data as any;
+  const message = data?.message || data?.error || error.message || "";
+
+  if (Array.isArray(message)) {
+    return message.join(" ");
+  }
+
+  return String(message);
+};
+
+const isNetworkOrTemporaryError = (error: unknown): boolean => {
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
+
+  if (!error.response) {
+    return true;
+  }
+
+  const status = error.response.status;
+  return status === 408 || status === 429 || status >= 500;
+};
+
+const looksLikeAuthSessionFailure = (error: unknown): boolean => {
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
+
+  const status = error.response?.status;
+  const message = getErrorMessage(error).toLowerCase();
+
+  if (status === 401) {
+    return (
+      message.includes("token") ||
+      message.includes("session") ||
+      message.includes("jwt") ||
+      message.includes("unauthorized") ||
+      message.includes("unauthenticated") ||
+      message.includes("expired") ||
+      message.includes("invalid")
+    );
+  }
+
+  if (status === 404) {
+    return message.includes("user not found") || message.includes("account not found") || message.includes("user deleted");
+  }
+
+  return false;
+};
+
+const expireSession = async (reason: string) => {
+  await tokenStorage.clearTokens();
+  console.log(`[api-client] Session expired (${reason}), notifying callback`);
+  onSessionExpired?.();
+};
 
 // Request: Add Authorization header
 apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
@@ -52,7 +113,12 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 403) {
+      console.warn("[api-client] 403 response received; preserving session:", error.response?.data || error.message);
+      return Promise.reject(error);
+    }
+
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -116,16 +182,22 @@ apiClient.interceptors.response.use(
 
         console.log("[api-client] Retrying original request after token refresh");
         return apiClient(originalRequest);
-      } catch (refreshError: any) {
-        console.error("[api-client] Token refresh failed:", refreshError?.response?.data || refreshError?.message);
+      } catch (refreshError: AxiosError | Error | unknown) {
+        console.error(
+          "[api-client] Token refresh failed:",
+          axios.isAxiosError(refreshError) ? refreshError.response?.data || refreshError.message : getErrorMessage(refreshError)
+        );
         processQueue(refreshError);
         isRefreshing = false;
-        await tokenStorage.clearTokens();
-        
-        // Notify AuthContext that session has expired
-        console.log("[api-client] Session expired, notifying callback");
-        onSessionExpired?.();
-        
+
+        if (looksLikeAuthSessionFailure(refreshError)) {
+          await expireSession("refresh-token-invalid");
+        } else if (isNetworkOrTemporaryError(refreshError)) {
+          console.warn("[api-client] Refresh failed due to temporary/network issue; preserving session");
+        } else {
+          console.warn("[api-client] Refresh failed without clear session-invalid signal; preserving session");
+        }
+
         throw refreshError;
       }
     }

@@ -18,6 +18,34 @@ export const authKeys = {
   currentUser: () => [...authKeys.all, "current-user"] as const,
 };
 
+const getProfileErrorMessage = (error: AxiosError<any>) => {
+  const message = error.response?.data?.message || error.response?.data?.error || error.message || "";
+  return Array.isArray(message) ? message.join(" ") : String(message);
+};
+
+const shouldExpireSessionFromProfileError = (error: AxiosError<any>) => {
+  const status = error.response?.status;
+  const message = getProfileErrorMessage(error).toLowerCase();
+
+  if (status === 401) {
+    return (
+      message.includes("token") ||
+      message.includes("session") ||
+      message.includes("jwt") ||
+      message.includes("unauthorized") ||
+      message.includes("unauthenticated") ||
+      message.includes("expired") ||
+      message.includes("invalid")
+    );
+  }
+
+  if (status === 404) {
+    return message.includes("user not found") || message.includes("account not found") || message.includes("user deleted");
+  }
+
+  return false;
+};
+
 // ============================================================================
 // MAIN AUTH HOOK - uses React Query to fetch user profile
 // ============================================================================
@@ -71,11 +99,14 @@ export function useAuth() {
     staleTime: 3 * 60 * 1000, // 3 minutes (access token valid for 15 min, so safe to cache 3 min)
     gcTime: 10 * 60 * 1000, // 10 minutes
     retry: (failureCount, error) => {
-      // Don't retry on 401/403 - these are handled by api-client's refresh interceptor
-      // If we reach here with 401/403 after api-client's refresh attempt, user is logged out
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        return false; // Stop retrying, user needs to log in
+      if (shouldExpireSessionFromProfileError(error)) {
+        return false;
       }
+
+      if (error.response?.status === 403) {
+        return false;
+      }
+
       // Retry network errors up to 3 times
       return failureCount < 3;
     },
@@ -119,12 +150,15 @@ export function useAuth() {
   // Handle auth errors
   useEffect(() => {
     if (query.isError) {
-      const status = query.error?.response?.status;
-      if (status === 401 || status === 403) {
-        // Token invalid or expired and refresh failed
+      if (shouldExpireSessionFromProfileError(query.error)) {
         tokenStorage.clearTokens();
         setUser(null);
         setHasToken(false);
+      } else {
+        console.warn("[useAuth] Profile fetch failed without expiring session:", {
+          status: query.error?.response?.status,
+          message: getProfileErrorMessage(query.error),
+        });
       }
       setIsLoading(false);
     }
