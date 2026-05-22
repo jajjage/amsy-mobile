@@ -1,6 +1,5 @@
 import { agentService, normalizeAgentCodeValidation } from "@/services/agent.service";
 import {
-    ActivateAgentResponse,
     AgentAccount,
     AgentCommission,
     AgentCustomer,
@@ -188,7 +187,7 @@ export function useActivateAgent() {
   return useMutation({
     mutationFn: async () => {
       const response = await agentService.activateAgentAccount();
-      return response.data as ActivateAgentResponse;
+      return response.data as unknown as AgentAccount;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: agentKeys.account() });

@@ -12,6 +12,7 @@ import {
     useAgentCommissions,
     useAgentCustomers,
     useAgentStats,
+    useActivateAgent,
     useAvailableAgentBalance,
     useRequestBankWithdrawal,
     useWithdrawToWallet,
@@ -123,17 +124,29 @@ export default function AgentScreen() {
 
 function BecomeAgentSection() {
   const { colors } = useTheme();
+  const activateAgent = useActivateAgent();
 
   return (
     <View style={[styles.section, styles.becomeAgentSection]}>
       <View style={[styles.ctaCard, { backgroundColor: colors.primary + "15" }]}>
         <Briefcase size={32} color={colors.primary} style={{ marginBottom: 12 }} />
         <Text style={[styles.ctaTitle, { color: colors.foreground }]}>
-          Agent access is not active yet
+          Activate agent mode
         </Text>
         <Text style={[styles.ctaSubtitle, { color: colors.textSecondary }]}>
-          Tenant admins create agent accounts. Once your account is enabled, your code, customers, commissions, and withdrawal tools will appear here.
+          Agent access is enabled for this tenant. Activate your account to generate your agent code and start earning commissions.
         </Text>
+        <TouchableOpacity
+          style={[styles.ctaButton, { backgroundColor: colors.primary }]}
+          onPress={() => activateAgent.mutate()}
+          disabled={activateAgent.isPending}
+        >
+          {activateAgent.isPending ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.ctaButtonText}>Activate Agent</Text>
+          )}
+        </TouchableOpacity>
       </View>
     </View>
   );
