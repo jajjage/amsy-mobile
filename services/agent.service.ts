@@ -1,6 +1,5 @@
 import apiClient from "@/lib/api-client";
 import {
-    ActivateAgentResponse,
     AgentAccount,
     AgentCommission,
     AgentCustomer,
@@ -395,7 +394,7 @@ export const agentService = {
    * Activate agent account for current user
    * POST /api/v1/dashboard/agent/activate
    */
-  activateAgentAccount: async (): Promise<ApiResponse<ActivateAgentResponse>> => {
+  activateAgentAccount: async (): Promise<ApiResponse<AgentAccount>> => {
     const response = await apiClient.post<ApiResponse<{ agent: AgentAccount }>>(
       "/dashboard/agent/activate"
     );
@@ -403,7 +402,7 @@ export const agentService = {
     return {
       ...response.data,
       data: normalizeAgentAccount((response.data as any)?.data?.agent),
-    } as ApiResponse<ActivateAgentResponse>;
+    };
   },
 
   /**
