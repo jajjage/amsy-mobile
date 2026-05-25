@@ -33,6 +33,7 @@ export type CheckoutMode = "checkout" | "success" | "failed";
 
 export interface CheckoutData {
   productName: string;
+  productType?: string;
   recipientPhone: string;
   amount: number;
   originalAmount?: number;
@@ -103,7 +104,9 @@ export const CheckoutModal = forwardRef<BottomSheet, CheckoutModalProps>(
       if (!data) return null;
 
       // Determine product type based on product name
-      const isData = data.productName.toLowerCase().includes("data") || 
+      const isData = data.productType === "data" ||
+                     data.productType === "subscription" ||
+                     data.productName.toLowerCase().includes("data") || 
                      data.productName.toLowerCase().includes("gb") || 
                      data.productName.toLowerCase().includes("mb");
 
@@ -124,7 +127,7 @@ export const CheckoutModal = forwardRef<BottomSheet, CheckoutModalProps>(
           status: "completed",
           recipient_phone: data.recipientPhone,
           operatorCode: data.network,
-          type: isData ? "data" : "airtime",
+          type: data.productType || (isData ? "data" : "airtime"),
         }
       } as Transaction;
     }, [data, cashbackToUse, walletBalance, totalToPay]);
@@ -312,7 +315,11 @@ export const CheckoutModal = forwardRef<BottomSheet, CheckoutModalProps>(
                        </View>
                      )}
                     <Text style={[styles.detailValue, { color: colors.foreground }]}>
-                      {data.productName.includes("Airtime") ? "Airtime" : "Mobile Data"}
+                      {data.productType === "subscription"
+                        ? "Call Sub"
+                        : data.productName.includes("Airtime")
+                          ? "Airtime"
+                          : "Mobile Data"}
                     </Text>
                   </View>
                 </View>

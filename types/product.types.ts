@@ -73,7 +73,7 @@ export interface ProductsResponseData {
 
 export interface ProductQueryParams {
   page?: number;
-  productType?: "airtime" | "data" | "bill";
+  productType?: string;
   operatorId?: string;
   search?: string;
   isActive?: boolean;

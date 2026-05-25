@@ -59,10 +59,25 @@ const NUM_COLUMNS = 2;
 const CARD_GAP = 12;
 const CARD_WIDTH = (width - 32 - CARD_GAP) / NUM_COLUMNS;
 
-export default function DataScreen() {
+type ProductPurchaseScreenProps = {
+  productType?: string;
+  title?: string;
+  returnRoute?: string;
+  processingMessage?: string;
+  EmptyIcon?: React.ComponentType<{ size: number; color: string }>;
+};
+
+export function ProductPurchaseScreen({
+  productType = "data",
+  title = "Data Plans",
+  returnRoute = "/data",
+  processingMessage = "Processing your data purchase...",
+  EmptyIcon = Wifi,
+}: ProductPurchaseScreenProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const showCategories = productType === "data";
 
   // === STATE PER GUIDE SECTION 4 ===
   // Shared
@@ -89,7 +104,7 @@ export default function DataScreen() {
 
   // === HOOKS ===
   const { data: productsData, isLoading: productsLoading } = useProducts({
-    productType: "data",
+    productType,
     isActive: true,
   });
   const { data: categories = [], isLoading: categoriesLoading } = useCategories();
@@ -177,16 +192,18 @@ export default function DataScreen() {
 
   // Auto-select first category from DB on load
   useEffect(() => {
-    if (!selectedCategory && categories.length > 0) {
+    if (showCategories && !selectedCategory && categories.length > 0) {
       setSelectedCategory(categories[0].slug);
     }
-  }, [categories, selectedCategory]);
+  }, [categories, selectedCategory, showCategories]);
 
   // === PRODUCT FILTERING (GUIDE SECTION 4 - FLOW 2) ===
   const filteredProducts = useMemo(() => {
     if (!productsData?.products) return [];
 
-    let products = productsData.products;
+    let products = productsData.products.filter(
+      (product: Product) => product.productType === productType
+    );
 
     // Step 1: Filter by selected network
     if (selectedNetwork) {
@@ -200,13 +217,14 @@ export default function DataScreen() {
       }
     }
 
-    // Step 2: Filter by selected category
-      if (selectedCategory) {
-        products = products.filter(
-          (p: Product) =>
-            p.category?.slug?.toLowerCase() === (selectedCategory ?? "").toLowerCase()
-        );
-      }
+    // Step 2: Filter by selected category when this product type uses categories.
+    if (showCategories && selectedCategory) {
+      products = products.filter(
+        (p: Product) =>
+          p.category?.slug?.toLowerCase() ===
+          (selectedCategory ?? "").toLowerCase()
+      );
+    }
 
     // Step 3: Deduplication by product ID
     const seen = new Set<string>();
@@ -224,7 +242,7 @@ export default function DataScreen() {
     });
 
     return products;
-  }, [productsData, selectedNetwork, selectedCategory]);
+  }, [productsData, productType, selectedNetwork, selectedCategory, showCategories]);
 
   // Get markup percent for a product
   const getMarkupPercent = useCallback(
@@ -449,6 +467,7 @@ export default function DataScreen() {
 
           return {
             productName: selectedProduct.name,
+            productType: selectedProduct.productType,
             recipientPhone: normalizedPhone,
             // Use finalSellingPrice (after offer discount) as the display amount
             amount: priceDetails.finalSellingPrice,
@@ -512,7 +531,7 @@ export default function DataScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          title: "Data Plans", // Updated to match screenshot
+          title,
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerLeft: () => (
@@ -559,12 +578,14 @@ export default function DataScreen() {
         />
 
         {/* Category Tabs */}
-        <CategoryTabs
-          categories={categories}
-          selectedCategory={selectedCategory}
-          onSelect={handleCategorySelect}
-          isLoading={categoriesLoading}
-        />
+        {showCategories && (
+          <CategoryTabs
+            categories={categories}
+            selectedCategory={selectedCategory}
+            onSelect={handleCategorySelect}
+            isLoading={categoriesLoading}
+          />
+        )}
 
         {/* Product Grid */}
         <View style={styles.flex}>
@@ -577,7 +598,7 @@ export default function DataScreen() {
             </View>
           ) : filteredProducts.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Wifi size={48} color={colors.textDisabled} />
+              <EmptyIcon size={48} color={colors.textDisabled} />
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                 {selectedNetwork
                   ? "No plans found for this network"
@@ -662,15 +683,19 @@ export default function DataScreen() {
         }}
         isLoading={isTopupPending}
         error={pinError}
-        returnRoute="/data"
+        returnRoute={returnRoute}
       />
 
       <LoadingOverlay
         visible={isPaymentProcessing}
-        message="Processing your data purchase..."
+        message={processingMessage}
       />
     </View>
   );
+}
+
+export default function DataScreen() {
+  return <ProductPurchaseScreen />;
 }
 
 const styles = StyleSheet.create({

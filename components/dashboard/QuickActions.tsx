@@ -2,7 +2,7 @@
 // Following HOME_PAGE_GUIDE.md specifications
 import { useTheme } from "@/context/ThemeContext";
 import { useRouter } from "expo-router";
-import { Grid, Phone, Receipt, Wifi } from "lucide-react-native";
+import { BadgeCheck, Grid, Phone, Receipt, Wifi } from "lucide-react-native";
 import React from "react";
 import {
     Pressable,
@@ -30,6 +30,12 @@ const actions: QuickAction[] = [
     label: "Airtime",
     Icon: Phone,
     route: "/airtime",
+  },
+  {
+    id: "subscription",
+    label: "Call Sub",
+    Icon: BadgeCheck,
+    route: "/subscription",
   },
   {
     id: "bills",
@@ -89,6 +95,7 @@ const styles = StyleSheet.create({
   },
   actionsCard: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     borderRadius: 12,
     paddingVertical: 16,
@@ -102,9 +109,10 @@ const styles = StyleSheet.create({
   },
   actionItem: {
     alignItems: "center",
-    flex: 1,
+    width: "22%",
     gap: 8,
-    padding: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   iconContainer: {
     width: 48,
