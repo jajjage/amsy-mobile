@@ -72,7 +72,7 @@ export const useTransactions = (params?: GetTransactionsParams) => {
 };
 
 /**
- * Get all transactions with infinite scrolling
+ * Get all transactions with infinite scrolling and filtering
  */
 export const useInfiniteTransactions = (params?: GetTransactionsParams) => {
   return useInfiniteQuery({

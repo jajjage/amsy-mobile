@@ -191,9 +191,8 @@ function AgentCodeSection({ agentCode }: { agentCode: string }) {
 
   const handleShare = async () => {
     try {
-      const webBaseUrl =
-        process.env.EXPO_PUBLIC_WEB_URL || "https://amsydata.com.ng";
-      const inviteLink = `${webBaseUrl.replace(/\/$/, "")}/register?agentCode=${encodeURIComponent(agentCode)}`;
+      const inviteLink =
+        "https://play.google.com/store/apps/details?id=com.amsy.amsydatasub";
       await Share.share({
         message: `Join Amsy using my agent code: ${agentCode}\n\n${inviteLink}`,
         url: inviteLink,

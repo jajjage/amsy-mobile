@@ -2,7 +2,7 @@
 // Following HOME_PAGE_GUIDE.md specifications
 import { useTheme } from "@/context/ThemeContext";
 import { useRouter } from "expo-router";
-import { BadgeCheck, Grid, Phone, Receipt, Wifi } from "lucide-react-native";
+import { BadgeCheck, GraduationCap, Grid, Phone, Tv, Wifi, Zap } from "lucide-react-native";
 import React from "react";
 import {
     Pressable,
@@ -38,10 +38,22 @@ const actions: QuickAction[] = [
     route: "/subscription",
   },
   {
-    id: "bills",
-    label: "Pay Bills",
-    Icon: Receipt,
-    route: "/pay-bills",
+    id: "electricity",
+    label: "Electricity",
+    Icon: Zap,
+    route: "/electricity",
+  },
+  {
+    id: "cable",
+    label: "Cable TV",
+    Icon: Tv,
+    route: "/cable",
+  },
+  {
+    id: "education",
+    label: "Exam Pins",
+    Icon: GraduationCap,
+    route: "/education",
   },
   {
     id: "more",

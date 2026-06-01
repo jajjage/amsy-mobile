@@ -13,6 +13,7 @@ export interface Wallet {
 export type RelatedTransactionInfo = {
   status:
     | "pending"
+    | "success"
     | "completed"
     | "failed"
     | "cancelled"
@@ -51,7 +52,10 @@ export interface Transaction {
 export interface GetTransactionsParams {
   page?: number;
   limit?: number;
+  search?: string;
   direction?: "debit" | "credit";
+  relatedType?: string;
+  status?: "pending" | "success" | "completed" | "failed" | "cancelled" | "reversed" | "retry";
   startDate?: string;
   endDate?: string;
 }

@@ -1,43 +1,80 @@
 // app/transactions.tsx
-// Full transactions history screen with filters
+// Full transactions history screen with search, filters, and pagination
 import { lightColors } from "@/constants/palette";
-import { useTransactions } from "@/hooks/useWallet";
+import { useInfiniteTransactions } from "@/hooks/useWallet";
 import {
-    getDisplayStatus,
-    getStatusConfig,
-    getTransactionSubtitle,
-    getTransactionTitle,
-    isDataTransaction,
+  getDisplayStatus,
+  getStatusConfig,
+  getTransactionSubtitle,
+  getTransactionTitle,
+  isDataTransaction,
 } from "@/lib/transactionUtils";
-import { Transaction } from "@/types/wallet.types";
+import { GetTransactionsParams, Transaction } from "@/types/wallet.types";
 import { useRouter } from "expo-router";
 import {
-    ArrowDown,
-    ArrowLeft,
-    ArrowUp,
-    CreditCard,
-    Phone,
-    Wifi,
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  CreditCard,
+  Phone,
+  Search,
+  Wifi,
 } from "lucide-react-native";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
-    FlatList,
-    Pressable,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type FilterType = "all" | "credit" | "debit";
+type StatusFilter = "all" | "pending" | "success" | "reversed";
 
 export default function TransactionsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { data: transactions = [], isLoading, refetch } = useTransactions();
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+  const [activeStatus, setActiveStatus] = useState<StatusFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const queryParams: GetTransactionsParams = useMemo(() => {
+    const params: GetTransactionsParams = { limit: 20 };
+
+    if (activeFilter !== "all") {
+      params.direction = activeFilter;
+    }
+
+    if (activeStatus !== "all") {
+      params.relatedType = "topup_request";
+      params.status = activeStatus;
+    }
+
+    if (searchQuery.trim()) {
+      params.search = searchQuery.trim();
+    }
+
+    return params;
+  }, [activeFilter, activeStatus, searchQuery]);
+
+  const {
+    data,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteTransactions(queryParams);
+
+  const transactions = useMemo(
+    () => data?.pages.flatMap(page => page.data.transactions) ?? [],
+    [data?.pages]
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -45,29 +82,28 @@ export default function TransactionsScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  // Filter transactions
-  const filteredTransactions = transactions.filter(tx => {
-    if (activeFilter === "all") return true;
-    return tx.direction === activeFilter;
-  });
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
-  // Get icon for transaction
   const getTransactionIcon = (tx: Transaction) => {
     const isCredit = tx.direction === "credit";
     const isDebit = tx.direction === "debit";
 
     if (isDebit && tx.relatedType === "topup_request") {
       if (isDataTransaction(tx)) {
-        return { Icon: Wifi, bgColor: "#F3E8FF", color: "#9333EA" }; // purple for data
+        return { Icon: Wifi, bgColor: "#F3E8FF", color: "#9333EA" };
       }
-      return { Icon: Phone, bgColor: "#DBEAFE", color: "#2563EB" }; // blue for airtime
+      return { Icon: Phone, bgColor: "#DBEAFE", color: "#2563EB" };
     }
 
     if (isCredit) {
-      return { Icon: ArrowDown, bgColor: "#DCFCE7", color: "#16A34A" }; // green for credit
+      return { Icon: ArrowDown, bgColor: "#DCFCE7", color: "#16A34A" };
     }
 
-    return { Icon: ArrowUp, bgColor: "#FEE2E2", color: "#DC2626" }; // red for debit
+    return { Icon: ArrowUp, bgColor: "#FEE2E2", color: "#DC2626" };
   };
 
   const formatCurrency = (amount: number) => {
@@ -93,28 +129,28 @@ export default function TransactionsScreen() {
     const displayStatus = getDisplayStatus(item);
     const statusConfig = getStatusConfig(item.related?.status || "pending");
     const { Icon, bgColor, color } = getTransactionIcon(item);
-    const dateStr = typeof item.createdAt === 'string' 
-      ? item.createdAt 
-      : item.createdAt.toISOString();
-    
+    const dateStr =
+      typeof item.createdAt === "string"
+        ? item.createdAt
+        : item.createdAt.toISOString();
+
     return (
-      <Pressable 
+      <Pressable
         style={styles.transactionItem}
-        onPress={() => router.push(`/transaction-detail?id=${item.id}&from=transactions`)}
+        onPress={() =>
+          router.push(`/transaction-detail?id=${item.id}&from=transactions`)
+        }
       >
-        {/* Icon */}
         <View style={[styles.txIcon, { backgroundColor: bgColor }]}>
           <Icon size={18} color={color} />
         </View>
 
-        {/* Details */}
         <View style={styles.txDetails}>
           <Text style={styles.txTitle}>{title}</Text>
           <Text style={styles.txSubtitle}>{subtitle}</Text>
           <Text style={styles.txDate}>{formatDate(dateStr)}</Text>
         </View>
 
-        {/* Amount & Status */}
         <View style={styles.txAmountContainer}>
           <Text
             style={[
@@ -125,7 +161,12 @@ export default function TransactionsScreen() {
             {isCredit ? "+" : "-"}₦{formatCurrency(item.amount)}
           </Text>
           {item.relatedType === "topup_request" && (
-            <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: statusConfig.bgColor },
+              ]}
+            >
               <Text style={[styles.statusText, { color: statusConfig.color }]}>
                 {displayStatus}
               </Text>
@@ -143,16 +184,17 @@ export default function TransactionsScreen() {
       </View>
       <Text style={styles.emptyTitle}>No transactions</Text>
       <Text style={styles.emptySubtitle}>
-        {activeFilter === "all" 
-          ? "Your transaction history will appear here"
-          : `No ${activeFilter} transactions found`}
+        {searchQuery.trim()
+          ? "No transactions match your search"
+          : activeFilter === "all" && activeStatus === "all"
+            ? "Your transaction history will appear here"
+            : "No transactions found for the selected filters"}
       </Text>
     </View>
   );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft size={24} color={lightColors.textPrimary} />
@@ -161,9 +203,29 @@ export default function TransactionsScreen() {
         <View style={styles.placeholder} />
       </View>
 
-      {/* Filter Tabs */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputWrapper}>
+          <Search size={18} color={lightColors.textTertiary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by phone, reference, product..."
+            placeholderTextColor={lightColors.textTertiary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable
+              onPress={() => setSearchQuery("")}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.clearSearch}>x</Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
       <View style={styles.filterContainer}>
-        {(["all", "credit", "debit"] as FilterType[]).map((filter) => (
+        {(["all", "credit", "debit"] as FilterType[]).map(filter => (
           <Pressable
             key={filter}
             style={[
@@ -184,16 +246,51 @@ export default function TransactionsScreen() {
         ))}
       </View>
 
-      {/* Transaction List */}
+      <View style={styles.filterContainer}>
+        {(["all", "pending", "success", "reversed"] as StatusFilter[]).map(
+          status => (
+            <Pressable
+              key={status}
+              style={[
+                styles.filterTab,
+                activeStatus === status && styles.filterTabActive,
+              ]}
+              onPress={() => setActiveStatus(status)}
+            >
+              <Text
+                style={[
+                  styles.filterText,
+                  activeStatus === status && styles.filterTextActive,
+                ]}
+              >
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+              </Text>
+            </Pressable>
+          )
+        )}
+      </View>
+
       <FlatList
-        data={filteredTransactions}
+        data={transactions}
         renderItem={renderTransaction}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
         contentContainerStyle={[
           styles.listContent,
-          filteredTransactions.length === 0 && styles.listContentEmpty,
+          transactions.length === 0 && styles.listContentEmpty,
         ]}
         ListEmptyComponent={renderEmpty}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator
+              size="large"
+              color="#2dd4bf"
+              style={styles.loadingFooter}
+            />
+          ) : null
+        }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.3}
+        scrollEnabled={transactions.length > 0}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -234,6 +331,32 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 40,
   },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  searchInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    backgroundColor: "#F5F5F5",
+    borderRadius: 24,
+    gap: 8,
+    height: 44,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: lightColors.textPrimary,
+    padding: 0,
+  },
+  clearSearch: {
+    fontSize: 18,
+    color: lightColors.textTertiary,
+  },
   filterContainer: {
     flexDirection: "row",
     paddingHorizontal: 16,
@@ -265,6 +388,9 @@ const styles = StyleSheet.create({
   listContentEmpty: {
     flex: 1,
     justifyContent: "center",
+  },
+  loadingFooter: {
+    paddingVertical: 20,
   },
   transactionItem: {
     flexDirection: "row",
@@ -347,4 +473,3 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
-

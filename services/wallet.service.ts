@@ -25,9 +25,19 @@ export const walletService = {
   getTransactions: async (
     params?: GetTransactionsParams
   ): Promise<TransactionsListResponse> => {
+    const cleanParams: GetTransactionsParams = {};
+    if (params?.page) cleanParams.page = params.page;
+    if (params?.limit) cleanParams.limit = params.limit;
+    if (params?.search?.trim()) cleanParams.search = params.search.trim();
+    if (params?.direction) cleanParams.direction = params.direction;
+    if (params?.relatedType) cleanParams.relatedType = params.relatedType;
+    if (params?.status) cleanParams.status = params.status;
+    if (params?.startDate) cleanParams.startDate = params.startDate;
+    if (params?.endDate) cleanParams.endDate = params.endDate;
+
     const response = await apiClient.get<TransactionsListResponse>(
       "/user/wallet/transactions",
-      { params }
+      { params: cleanParams }
     );
     return response.data;
   },
