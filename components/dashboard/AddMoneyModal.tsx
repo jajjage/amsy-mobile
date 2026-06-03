@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { Check, Copy, RefreshCw, Share as ShareIcon, X } from 'lucide-react-native';
 import React, { useEffect } from 'react';
-import { ActivityIndicator, Modal, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { toast } from 'sonner-native';
 
 interface AddMoneyModalProps {
@@ -123,7 +123,11 @@ export function AddMoneyModal({ isVisible, onClose }: AddMoneyModalProps) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.content}>
+          <ScrollView
+            style={styles.content}
+            contentContainerStyle={styles.contentContainer}
+            showsVerticalScrollIndicator={false}
+          >
             {hasVirtualAccount ? (
               // Account Exists View
               <View style={styles.accountDetails}>
@@ -192,7 +196,7 @@ export function AddMoneyModal({ isVisible, onClose }: AddMoneyModalProps) {
                 
               </View>
             )}
-          </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -212,6 +216,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     width: '100%',
     maxWidth: 400,
+    maxHeight: '90%',
     padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -238,6 +243,9 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   content: {
+    width: '100%',
+  },
+  contentContainer: {
     minHeight: 200,
     justifyContent: 'center',
   },
