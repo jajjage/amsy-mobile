@@ -29,7 +29,7 @@ export default function OnboardingLayout() {
 
   // Skip onboarding if already completed
   if (hasCompletedOnboarding) {
-    return <Redirect href="/(auth)/login" />;
+    return <Redirect href="/(auth)/register" />;
   }
 
   return (

@@ -1,5 +1,6 @@
 import { useRegister } from "@/hooks/useAuth";
 import { agentService, normalizeAgentCodeValidation } from "@/services/agent.service";
+import { installReferrerService } from "@/services/install-referrer.service";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -67,14 +68,19 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isValidatingAgentCode, setIsValidatingAgentCode] = useState(false);
   const [agentCodeMessage, setAgentCodeMessage] = useState<string | null>(null);
+  const [installReferrerAgentCode, setInstallReferrerAgentCode] = useState("");
+  const [hasEditedAgentCode, setHasEditedAgentCode] = useState(false);
   const params = useLocalSearchParams<{
     agentCode?: string;
     code?: string;
   }>();
   const initialAgentCode = useMemo(() => {
     const value = params.agentCode || params.code;
-    return typeof value === "string" ? value.trim().toUpperCase() : "";
-  }, [params.agentCode, params.code]);
+    if (typeof value === "string" && value.trim()) {
+      return value.trim().toUpperCase();
+    }
+    return installReferrerAgentCode;
+  }, [params.agentCode, params.code, installReferrerAgentCode]);
 
   const {
     control,
@@ -94,6 +100,32 @@ export default function RegisterScreen() {
     },
     mode: "onChange",
   });
+
+  useEffect(() => {
+    const value = params.agentCode || params.code;
+    const code = typeof value === "string" ? value.trim().toUpperCase() : "";
+
+    if (code) {
+      setHasEditedAgentCode(false);
+      installReferrerService.setPendingAgentCode(code);
+    }
+  }, [params.agentCode, params.code]);
+
+  useEffect(() => {
+    if (initialAgentCode || hasEditedAgentCode) return;
+
+    let isMounted = true;
+
+    installReferrerService.captureInstallReferrerOnce().then((code) => {
+      if (isMounted && code) {
+        setInstallReferrerAgentCode(code.trim().toUpperCase());
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialAgentCode, hasEditedAgentCode]);
 
   useEffect(() => {
     if (initialAgentCode) {
@@ -371,6 +403,8 @@ export default function RegisterScreen() {
                           onBlur={onBlur}
                           onChangeText={(nextValue) => {
                             const normalized = nextValue.toUpperCase();
+                            setHasEditedAgentCode(true);
+                            setInstallReferrerAgentCode("");
                             setAgentCodeMessage(null);
                             onChange(normalized);
                           }}

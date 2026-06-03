@@ -12,9 +12,43 @@ interface AddMoneyModalProps {
   onClose: () => void;
 }
 
+type DisplayVirtualAccount = {
+  id: string;
+  accountNumber: string;
+  bankName?: string | null;
+  accountName?: string | null;
+};
+
 export function AddMoneyModal({ isVisible, onClose }: AddMoneyModalProps) {
   const { user, refetch } = useAuth();
-  const [copied, setCopied] = React.useState(false);
+  const [copiedAccount, setCopiedAccount] = React.useState<string | null>(null);
+  const virtualAccounts = React.useMemo<DisplayVirtualAccount[]>(() => {
+    if (!user) return [];
+    if (Array.isArray(user.virtualAccounts) && user.virtualAccounts.length > 0) {
+      return user.virtualAccounts
+        .filter((account) => !!account.accountNumber)
+        .map((account, index) => ({
+          id: account.id || account.accountNumber || `account-${index}`,
+          accountNumber: account.accountNumber,
+          bankName: account.bankName || user.virtualAccountBankName,
+          accountName: account.accountName || user.virtualAccountAccountName || user.fullName,
+        }));
+    }
+
+    if (user.virtualAccountNumber) {
+      return [
+        {
+          id: 'primary',
+          accountNumber: user.virtualAccountNumber,
+          bankName: user.virtualAccountBankName,
+          accountName: user.virtualAccountAccountName || user.fullName,
+        },
+      ];
+    }
+
+    return [];
+  }, [user]);
+  const hasVirtualAccount = virtualAccounts.length > 0;
 
   // Mutation to create virtual account
   const { mutate: createVirtualAccount, isPending, isError } = useMutation({
@@ -36,28 +70,34 @@ export function AddMoneyModal({ isVisible, onClose }: AddMoneyModalProps) {
 
   // Effect to trigger creation if user doesn't have an account
   useEffect(() => {
-    if (isVisible && user && !user.virtualAccountNumber && !isPending && !isError) {
+    if (isVisible && user && !hasVirtualAccount && !isPending && !isError) {
       createVirtualAccount();
     }
-  }, [isVisible, user, user?.virtualAccountNumber]);
+  }, [createVirtualAccount, hasVirtualAccount, isError, isPending, isVisible, user]);
 
-  const handleCopy = async () => {
-    if (user?.virtualAccountNumber) {
-      await Clipboard.setStringAsync(user.virtualAccountNumber);
-      setCopied(true);
+  const handleCopy = async (account: DisplayVirtualAccount) => {
+    if (account.accountNumber) {
+      await Clipboard.setStringAsync(account.accountNumber);
+      setCopiedAccount(account.id);
       toast.success('Account number copied');
       
       // Reset copied state after 2 seconds
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopiedAccount(null), 2000);
     }
   };
 
   const handleShare = async () => {
-    if (!user?.virtualAccountNumber) return;
+    if (!hasVirtualAccount || !user) return;
+    const accountDetails = virtualAccounts
+      .map(
+        (account, index) =>
+          `Account ${index + 1}\nBank: ${account.bankName || 'Wema Bank'}\nAccount Number: ${account.accountNumber}\nAccount Name: ${account.accountName || user.fullName}`
+      )
+      .join('\n\n');
     
     try {
       await Share.share({
-        message: `Here are my Amsy account details:\nBank: ${user.virtualAccountBankName}\nAccount Number: ${user.virtualAccountNumber}\nAccount Name: ${user.virtualAccountAccountName}`,
+        message: `Here are my Amsy account details:\n${accountDetails}`,
       });
     } catch (error) {
      toast.error('Could not share details');
@@ -84,23 +124,27 @@ export function AddMoneyModal({ isVisible, onClose }: AddMoneyModalProps) {
           </View>
 
           <View style={styles.content}>
-            {user.virtualAccountNumber ? (
+            {hasVirtualAccount ? (
               // Account Exists View
               <View style={styles.accountDetails}>
                 <Text style={styles.instruction}>
-                  Transfer money to this account to fund your wallet instantly.
+                  Transfer money to any of these accounts to fund your wallet instantly.
                 </Text>
 
-                <View style={styles.detailCard}>
+                {virtualAccounts.map((account, index) => (
+                  <View key={account.id} style={styles.detailCard}>
+                    {virtualAccounts.length > 1 && (
+                      <Text style={styles.accountLabel}>Account {index + 1}</Text>
+                    )}
                     <View>
-                        <Text style={styles.bankName}>{user.virtualAccountBankName || 'Wema Bank'}</Text>
-                        <Text style={styles.accountName}>{user.virtualAccountAccountName || user.fullName}</Text>
+                        <Text style={styles.bankName}>{account.bankName || 'Wema Bank'}</Text>
+                        <Text style={styles.accountName}>{account.accountName || user.fullName}</Text>
                     </View>
                   
                   <View style={styles.accountNumberContainer}>
-                    <Text style={styles.accountNumber}>{user.virtualAccountNumber}</Text>
-                    <TouchableOpacity onPress={handleCopy} style={styles.copyButton}>
-                      {copied ? (
+                    <Text style={styles.accountNumber}>{account.accountNumber}</Text>
+                    <TouchableOpacity onPress={() => handleCopy(account)} style={styles.copyButton}>
+                      {copiedAccount === account.id ? (
                         <Check size={20} color="#2E7D32" />
                       ) : (
                         <Copy size={20} color="#2dd4bf" />
@@ -108,6 +152,7 @@ export function AddMoneyModal({ isVisible, onClose }: AddMoneyModalProps) {
                     </TouchableOpacity>
                   </View>
                 </View>
+                ))}
 
                 <View style={styles.actions}>
                   <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
@@ -206,9 +251,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F9FA',
     borderRadius: 12,
     padding: 20,
-    marginBottom: 20,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E9ECEF',
+    width: '100%',
+  },
+  accountLabel: {
+    fontSize: 12,
+    color: '#2dd4bf',
+    marginBottom: 8,
+    fontWeight: '700',
   },
   bankName: {
     fontSize: 14,

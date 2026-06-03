@@ -20,6 +20,7 @@ import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { useAppRating } from '@/hooks/useAppRating';
 import { useMobileNotificationNavigation } from '@/hooks/useMobileNotificationNavigation';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { installReferrerService } from '@/services/install-referrer.service';
 
 
 import { LoadingOverlay } from '@/components/LoadingOverlay';
@@ -97,6 +98,10 @@ function AppInitializer() {
       SplashScreen.hideAsync();
     }
   }, [isLoading]);
+
+  useEffect(() => {
+    installReferrerService.captureInstallReferrerOnce();
+  }, []);
   
   return <LoadingOverlay visible={isLoading} />;
 }

@@ -191,8 +191,7 @@ function AgentCodeSection({ agentCode }: { agentCode: string }) {
 
   const handleShare = async () => {
     try {
-      const inviteLink =
-        "https://play.google.com/store/apps/details?id=com.amsy.amsydatasub";
+      const inviteLink = `https://play.google.com/store/apps/details?id=com.amsy.amsydatasub&referrer=${encodeURIComponent(`agentCode=${agentCode}`)}`;
       await Share.share({
         message: `Join Amsy using my agent code: ${agentCode}\n\n${inviteLink}`,
         url: inviteLink,
