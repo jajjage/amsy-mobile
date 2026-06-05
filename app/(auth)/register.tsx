@@ -1,8 +1,10 @@
+import { useValidateAgentCode } from "@/hooks/useAgent";
 import { useRegister } from "@/hooks/useAuth";
 import { agentService, normalizeAgentCodeValidation } from "@/services/agent.service";
 import { installReferrerService } from "@/services/install-referrer.service";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useLocalSearchParams } from "expo-router";
+import { Briefcase } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
@@ -75,16 +77,27 @@ export default function RegisterScreen() {
     code?: string;
   }>();
   const initialAgentCode = useMemo(() => {
+    if (hasEditedAgentCode) {
+      return "";
+    }
+
     const value = params.agentCode || params.code;
     if (typeof value === "string" && value.trim()) {
       return value.trim().toUpperCase();
     }
     return installReferrerAgentCode;
-  }, [params.agentCode, params.code, installReferrerAgentCode]);
+  }, [hasEditedAgentCode, params.agentCode, params.code, installReferrerAgentCode]);
+
+  const {
+    data: validationResult,
+    isError: isAgentValidationUnavailable,
+    isLoading: isValidatingInviteAgentCode,
+  } = useValidateAgentCode(initialAgentCode);
 
   const {
     control,
     handleSubmit,
+    clearErrors,
     setError,
     setValue,
     formState: { errors, isValid },
@@ -128,13 +141,21 @@ export default function RegisterScreen() {
   }, [initialAgentCode, hasEditedAgentCode]);
 
   useEffect(() => {
-    if (initialAgentCode) {
+    if (initialAgentCode && !hasEditedAgentCode) {
       setValue("agentCode", initialAgentCode, { shouldValidate: true });
-      setAgentCodeMessage("Agent code applied from your invite link.");
+      setAgentCodeMessage(null);
     }
-  }, [initialAgentCode, setValue]);
+  }, [hasEditedAgentCode, initialAgentCode, setValue]);
 
-  const canSubmit = isValid && !isPending && !isValidatingAgentCode;
+  const hasKnownInvalidInviteAgentCode =
+    !!initialAgentCode && validationResult?.valid === false && !hasEditedAgentCode;
+
+  const canSubmit =
+    isValid &&
+    !isPending &&
+    !isValidatingAgentCode &&
+    !isValidatingInviteAgentCode &&
+    !hasKnownInvalidInviteAgentCode;
 
   const onSubmit = async (data: RegisterFormData) => {
     const normalizedAgentCode = data.agentCode?.trim().toUpperCase();
@@ -203,6 +224,37 @@ export default function RegisterScreen() {
                     Enter your information to create an account
                   </Text>
                 </VStack>
+
+                {/* Agent Info Banner */}
+                {initialAgentCode && !hasEditedAgentCode && (
+                  <VStack space="sm" className="bg-primary-50 border border-primary-200 rounded-lg p-4">
+                    <HStack space="md" className="items-center">
+                      <Briefcase size={20} color="#2dd4bf" />
+                      <VStack space="xs" className="flex-1">
+                        {isValidatingInviteAgentCode ? (
+                          <Text className="text-primary-700">Verifying agent code...</Text>
+                        ) : validationResult?.valid ? (
+                          <>
+                            <Text className="text-primary-700 font-semibold">Agent Code Verified!</Text>
+                            <Text className="text-primary-600 text-sm">
+                              You're signing up under agent {validationResult.referrerName}
+                            </Text>
+                          </>
+                        ) : validationResult?.valid === false ? (
+                          <Text className="text-error-700 text-sm">
+                            Invalid agent code. You can enter another code below.
+                          </Text>
+                        ) : isAgentValidationUnavailable ? (
+                          <Text className="text-typography-600 text-sm">
+                            We couldn't verify this code right now. We'll check again before signup.
+                          </Text>
+                        ) : (
+                          <Text className="text-primary-700">Waiting to verify agent code...</Text>
+                        )}
+                      </VStack>
+                    </HStack>
+                  </VStack>
+                )}
 
                 {/* API Error Alert */}
                 {errorMessage && (
@@ -386,46 +438,49 @@ export default function RegisterScreen() {
                 </FormControl>
 
                 {/* Agent Code Field (Optional) */}
-                <FormControl isInvalid={!!errors.agentCode}>
-                  <FormControlLabel className="mb-2">
-                    <FormControlLabelText className="text-typography-700 font-medium">
-                      Agent Code (Optional)
-                    </FormControlLabelText>
-                  </FormControlLabel>
-                  <Controller
-                    control={control}
-                    name="agentCode"
-                    render={({ field: { onChange, onBlur, value } }) => (
-                      <Input variant="outline" size="xl" className="bg-background-0 rounded-xl">
-                        <InputField
-                          placeholder="E.g. AG123ABC"
-                          autoCapitalize="characters"
-                          onBlur={onBlur}
-                          onChangeText={(nextValue) => {
-                            const normalized = nextValue.toUpperCase();
-                            setHasEditedAgentCode(true);
-                            setInstallReferrerAgentCode("");
-                            setAgentCodeMessage(null);
-                            onChange(normalized);
-                          }}
-                          value={value}
-                          className="text-typography-900"
-                          placeholderTextColor="#9CA3AF"
-                        />
-                      </Input>
+                {(!initialAgentCode || hasKnownInvalidInviteAgentCode || hasEditedAgentCode) && (
+                  <FormControl isInvalid={!!errors.agentCode}>
+                    <FormControlLabel className="mb-2">
+                      <FormControlLabelText className="text-typography-700 font-medium">
+                        Agent Code (Optional)
+                      </FormControlLabelText>
+                    </FormControlLabel>
+                    <Controller
+                      control={control}
+                      name="agentCode"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <Input variant="outline" size="xl" className="bg-background-0 rounded-xl">
+                          <InputField
+                            placeholder="E.g. AG123ABC"
+                            autoCapitalize="characters"
+                            onBlur={onBlur}
+                            onChangeText={(nextValue) => {
+                              const normalized = nextValue.toUpperCase();
+                              setHasEditedAgentCode(true);
+                              setInstallReferrerAgentCode("");
+                              setAgentCodeMessage(null);
+                              clearErrors("agentCode");
+                              onChange(normalized);
+                            }}
+                            value={value}
+                            className="text-typography-900"
+                            placeholderTextColor="#9CA3AF"
+                          />
+                        </Input>
+                      )}
+                    />
+                    {agentCodeMessage && !errors.agentCode && (
+                      <Text size="xs" className="mt-1 text-typography-500">
+                        {agentCodeMessage}
+                      </Text>
                     )}
-                  />
-                  {agentCodeMessage && !errors.agentCode && (
-                    <Text size="xs" className="mt-1 text-typography-500">
-                      {agentCodeMessage}
-                    </Text>
-                  )}
-                  {errors.agentCode && (
-                    <FormControlError className="mt-1">
-                      <FormControlErrorText>{errors.agentCode.message}</FormControlErrorText>
-                    </FormControlError>
-                  )}
-                </FormControl>
+                    {errors.agentCode && (
+                      <FormControlError className="mt-1">
+                        <FormControlErrorText>{errors.agentCode.message}</FormControlErrorText>
+                      </FormControlError>
+                    )}
+                  </FormControl>
+                )}
 
                 {/* Register Button */}
                 <Button
