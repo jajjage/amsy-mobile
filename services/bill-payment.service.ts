@@ -20,7 +20,7 @@ export const billPaymentService = {
 
   async getBillers(category?: string): Promise<ApiResponse<Biller[]>> {
     const response = await apiClient.get<ApiResponse<Biller[]>>("/bills/billers", {
-      params: category ? { categoryType: category } : undefined,
+      params: category ? { category } : undefined,
     });
     return response.data;
   },
