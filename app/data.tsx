@@ -50,7 +50,7 @@ import {
   isValidNigerianPhone,
   normalizePhoneNumber,
 } from "@/lib/detectNetwork";
-import { calculateFinalPrice } from "@/lib/price-calculator";
+import { calculateFinalPrice, getResolvedProductPrice } from "@/lib/price-calculator";
 import { Product } from "@/types/product.types";
 import { getUserFriendlyError } from "@/utils/errors";
 
@@ -273,13 +273,13 @@ export function ProductPurchaseScreen({
         return product.discountedPrice;
       }
 
-      const faceValue = parseFloat(product.denomAmount || "0");
-      const supplierPrice = product.supplierOffers?.[0]?.supplierPrice
-        ? parseFloat(product.supplierOffers[0].supplierPrice.toString())
-        : 0;
+      const basePrice = getResolvedProductPrice(product);
 
-      // Use the max of faceValue and supplierPrice, or just faceValue if supplier is 0
-      let sellingPrice = Math.max(faceValue, supplierPrice > 0 ? supplierPrice : faceValue);
+      if (product.discountedPrice !== undefined && product.discountedPrice !== null && product.discountedPrice > 0) {
+        return product.discountedPrice;
+      }
+
+      let sellingPrice = basePrice;
 
       // Apply discount if eligible (fallback for products without discountedPrice)
       if (product.activeOffer && isEligibleForOffer(product)) {
