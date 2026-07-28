@@ -1,34 +1,47 @@
 // components/dashboard/BalanceCard.tsx
-// Following detailed Balance Card specs from user
 import { useTheme } from "@/context/ThemeContext";
-import { Eye, EyeOff, Plus } from "lucide-react-native";
+import * as Clipboard from "expo-clipboard";
+import { Copy, Eye, EyeOff, Plus } from "lucide-react-native";
 import React from "react";
 import {
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
+import { toast } from "sonner-native";
 
 interface BalanceCardProps {
   balance: number;
   onAddMoney?: () => void;
   isBalanceVisible: boolean;
   onToggleBalance: () => void;
+  virtualAccountNumber?: string;
+  virtualAccountBankName?: string;
 }
 
-export function BalanceCard({ 
-  balance, 
+export function BalanceCard({
+  balance,
   onAddMoney,
   isBalanceVisible,
-  onToggleBalance 
+  onToggleBalance,
+  virtualAccountNumber,
+  virtualAccountBankName,
 }: BalanceCardProps) {
   const { colors } = useTheme();
-  
+
   const formatCurrency = (amount: number) => {
     return amount.toLocaleString("en-NG", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
+    });
+  };
+
+  const handleCopyVirtualAccount = async () => {
+    if (!virtualAccountNumber) return;
+    await Clipboard.setStringAsync(virtualAccountNumber);
+    toast.success("Account number copied! 📋", {
+      description: "Virtual Account Number copied to clipboard",
     });
   };
 
@@ -37,7 +50,7 @@ export function BalanceCard({
       {/* Header Row */}
       <View style={styles.headerRow}>
         {/* Left: Balance Label + Eye Toggle */}
-        <Pressable 
+        <Pressable
           style={styles.balanceLabel}
           onPress={onToggleBalance}
         >
@@ -48,20 +61,45 @@ export function BalanceCard({
             <EyeOff size={16} color="rgba(255,251,245,0.9)" />
           )}
         </Pressable>
-        
-        {/* Right: Add Money Button - Glassmorphism style */}
-        <Pressable style={styles.addMoneyButton} onPress={onAddMoney}>
-          <Plus size={14} color="#FFFBF5" />
-          <Text style={styles.addMoneyText}>Add Money</Text>
-        </Pressable>
+
+        {/* Right: Add Money Button */}
+        {onAddMoney && (
+          <Pressable style={styles.addMoneyButton} onPress={onAddMoney}>
+            <Plus size={14} color="#FFFBF5" />
+            <Text style={styles.addMoneyText}>Add Money</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Balance Amount */}
-      <View style={styles.balanceContainer}>
-        <Text style={styles.balanceAmount}>
-          {isBalanceVisible ? `₦${formatCurrency(balance)}` : "*****"}
-        </Text>
+      <View style={styles.contentRow}>
+        <View style={styles.balanceContainer}>
+          <Text style={styles.balanceAmount}>
+            {isBalanceVisible ? `₦${formatCurrency(balance)}` : "*****"}
+          </Text>
+        </View>
       </View>
+
+      {/* Prominent Dedicated Virtual Account Banner for Instant Funding */}
+      {Boolean(virtualAccountNumber) && (
+        <Pressable
+          style={styles.prominentVaContainer}
+          onPress={handleCopyVirtualAccount}
+        >
+          <View style={styles.vaInfoLeft}>
+            <Text style={styles.vaHeaderLabel}>DEPOSIT ACCOUNT</Text>
+            <Text style={styles.vaBankAndNumberText}>
+              {virtualAccountBankName ? `${virtualAccountBankName} • ` : ""}
+              <Text style={styles.vaNumberHighlight}>{virtualAccountNumber}</Text>
+            </Text>
+          </View>
+
+          <View style={styles.copyBadge}>
+            <Copy size={14} color="#FFFFFF" />
+            <Text style={styles.copyBadgeText}>Copy</Text>
+          </View>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -71,10 +109,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     marginHorizontal: 16,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    borderRadius: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
@@ -102,27 +137,78 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.2)",
-    height: 36,
-    paddingHorizontal: 12,
+    height: 32,
+    paddingHorizontal: 10,
     borderRadius: 9999,
-    gap: 6,
+    gap: 4,
   },
   addMoneyText: {
     color: "#FFFBF5",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
   },
+  contentRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginTop: 4,
+    marginBottom: 12,
+  },
   balanceContainer: {
-    position: 'relative',
-    alignSelf: 'flex-start',
-    marginTop: 2,
+    position: "relative",
+    alignSelf: "flex-start",
     borderRadius: 4,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   balanceAmount: {
     color: "#FFFFFF",
-    fontSize: 24,
+    fontSize: 28,
+    fontWeight: "800",
+  },
+  prominentVaContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(0, 0, 0, 0.25)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+  },
+  vaInfoLeft: {
+    flex: 1,
+  },
+  vaHeaderLabel: {
+    color: "rgba(255, 251, 245, 0.7)",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  vaBankAndNumberText: {
+    color: "rgba(255, 255, 255, 0.9)",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  vaNumberHighlight: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  copyBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  copyBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
     fontWeight: "700",
   },
 });
-

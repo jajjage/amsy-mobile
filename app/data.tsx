@@ -190,12 +190,63 @@ export function ProductPurchaseScreen({
     }
   }, [networks, selectedNetwork]);
 
-  // Auto-select first category from DB on load
+  // === CATEGORY FILTERING BY SELECTED NETWORK & PRODUCT AVAILABILITY ===
+  // Only show a category tab if there is at least 1 active product for the currently selected network
+  const visibleCategories = useMemo(() => {
+    if (!categories.length) return [];
+    if (!productsData?.products?.length) return categories;
+
+    // Filter products for current productType and selectedNetwork
+    const productsForNetwork = productsData.products.filter((p: Product) => {
+      if (p.productType?.toLowerCase() !== productType?.toLowerCase()) return false;
+      if (p.isActive === false) return false;
+
+      if (selectedNetwork) {
+        const pOpName = p.operator?.name?.toLowerCase() || "";
+        const opSlug = selectedNetwork.toLowerCase();
+
+        let matches = false;
+        if (opSlug === "9mobile") {
+          matches = pOpName.includes("9mobile") || pOpName.includes("etisalat");
+        } else {
+          matches = pOpName.includes(opSlug);
+        }
+        if (!matches) return false;
+      }
+      return true;
+    });
+
+    // Gather set of categories that have products for this network
+    const activeCategoryIdentifiers = new Set<string>();
+    productsForNetwork.forEach((p: Product) => {
+      if (p.category?.slug) activeCategoryIdentifiers.add(p.category.slug.toLowerCase());
+      if (p.category?.name) activeCategoryIdentifiers.add(p.category.name.toLowerCase());
+      if (p.categoryId) activeCategoryIdentifiers.add(p.categoryId.toLowerCase());
+    });
+
+    // Filter DB categories to ONLY those present in activeCategoryIdentifiers for this network
+    const filtered = categories.filter((c: ProductCategory) =>
+      activeCategoryIdentifiers.has(c.slug.toLowerCase()) ||
+      activeCategoryIdentifiers.has(c.name.toLowerCase()) ||
+      activeCategoryIdentifiers.has(c.id.toLowerCase())
+    );
+
+    return filtered.length > 0 ? filtered : categories;
+  }, [categories, productsData, productType, selectedNetwork]);
+
+  // Auto-select first valid category from visibleCategories on load or network change
   useEffect(() => {
-    if (showCategories && !selectedCategory && categories.length > 0) {
-      setSelectedCategory(categories[0].slug);
+    if (showCategories && visibleCategories.length > 0) {
+      const isCurrentValid = visibleCategories.some(
+        (c) =>
+          c.slug.toLowerCase() === selectedCategory?.toLowerCase() ||
+          c.id.toLowerCase() === selectedCategory?.toLowerCase()
+      );
+      if (!selectedCategory || !isCurrentValid) {
+        setSelectedCategory(visibleCategories[0].slug);
+      }
     }
-  }, [categories, selectedCategory, showCategories]);
+  }, [visibleCategories, selectedCategory, showCategories]);
 
   // === PRODUCT FILTERING (GUIDE SECTION 4 - FLOW 2) ===
   const filteredProducts = useMemo(() => {
@@ -553,6 +604,26 @@ export function ProductPurchaseScreen({
 
 
         {/* Phone Number Input */}
+          headerStyle: { backgroundColor: colors.background },
+          headerTintColor: colors.foreground,
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backButton}
+            >
+              <ArrowLeft size={24} color={colors.foreground} />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={100}
+      >
+
+        {/* Phone Number Input */}
         <View style={styles.section}>
           <NetworkDetectorInput
             value={phoneNumber}
@@ -580,13 +651,12 @@ export function ProductPurchaseScreen({
         {/* Category Tabs */}
         {showCategories && (
           <CategoryTabs
-            categories={categories}
+            categories={visibleCategories}
             selectedCategory={selectedCategory}
             onSelect={handleCategorySelect}
             isLoading={categoriesLoading}
           />
         )}
-
         {/* Product Grid */}
         <View style={styles.flex}>
           {productsLoading ? (

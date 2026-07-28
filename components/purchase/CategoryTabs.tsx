@@ -1,6 +1,6 @@
 /**
- * CategoryTabs - Horizontal scrollable category filter tabs
- * Per mobile-airtime-data-guide.md Section 3.C
+ * CategoryTabs - Multi-row wrapped category filter tabs
+ * Displays top categories at top and wraps additional categories below
  */
 
 import { darkColors, designTokens, lightColors } from "@/constants/palette";
@@ -9,7 +9,6 @@ import * as Haptics from "expo-haptics";
 import React from "react";
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -38,7 +37,7 @@ export function CategoryTabs({
     (a, b) => (a.priority || 0) - (b.priority || 0)
   );
 
-  // Map categories from DB only (no hardcoded "All")
+  // Map categories from DB only
   const allTabs = sortedCategories.map((cat) => ({
     slug: cat.slug,
     name: cat.name,
@@ -60,11 +59,7 @@ export function CategoryTabs({
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
+      <View style={styles.gridContent}>
         {allTabs.map((tab) => {
           const isActive = selectedCategory === tab.slug;
 
@@ -74,7 +69,6 @@ export function CategoryTabs({
               style={[
                 styles.tab,
                 {
-                  // Per guide: Active = bg-primary text-primary-foreground (pill)
                   backgroundColor: isActive ? colors.primary : "transparent",
                   borderColor: isActive ? colors.primary : colors.border,
                 },
@@ -99,7 +93,7 @@ export function CategoryTabs({
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -107,24 +101,25 @@ export function CategoryTabs({
 const styles = StyleSheet.create({
   container: {
     marginBottom: designTokens.spacing.md,
+    paddingHorizontal: designTokens.spacing.md,
   },
   loadingContainer: {
     height: 44,
     justifyContent: "center",
     alignItems: "center",
   },
-  scrollContent: {
-    paddingHorizontal: designTokens.spacing.md,
+  gridContent: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: designTokens.spacing.sm,
   },
   tab: {
     paddingVertical: designTokens.spacing.sm,
-    paddingHorizontal: designTokens.spacing.lg,
+    paddingHorizontal: designTokens.spacing.md,
     borderRadius: designTokens.radius.full,
     borderWidth: 1,
   },
   activeTab: {
-    // Shadow for pill effect
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

@@ -1,5 +1,4 @@
 // app/(tabs)/index.tsx
-// Updated layout to properly connect BalanceCard and RecentTransactions
 import {
     BalanceCard,
     HeaderBar,
@@ -11,9 +10,14 @@ import {
     UserProfileCard
 } from "@/components/dashboard";
 import { AddMoneyModal } from "@/components/dashboard/AddMoneyModal";
+import { DashboardAnnouncementModal } from "@/components/dashboard/DashboardAnnouncementModal";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useBalanceVisibility } from "@/hooks/useBalanceVisibility";
+import {
+  useDashboardAnnouncement,
+  useMarkAnnouncementViewed,
+} from "@/hooks/useDashboardAnnouncement";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { useRecentTransactions } from "@/hooks/useWallet";
 import { useWalletBalance } from "@/hooks/useWalletBalance";
@@ -33,14 +37,20 @@ export default function HomeScreen() {
   const { user, refetch: refetchUser } = useAuth();
   const { colors, isDark } = useTheme();
   const { isBalanceVisible, toggleBalanceVisibility } = useBalanceVisibility();
-  
+
   // Custom hooks
   const { balance, refetch: refetchBalance } = useWalletBalance();
   const { data: transactions = [], refetch: refetchTransactions } = useRecentTransactions();
   const { count: unreadNotificationCount, refetch: refetchNotifications } = useUnreadNotificationCount();
+  const {
+    data: dashboardAnnouncement,
+    refetch: refetchAnnouncement,
+  } = useDashboardAnnouncement();
+  const markAnnouncementViewed = useMarkAnnouncementViewed();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showAddMoney, setShowAddMoney] = useState(false);
+  const [dismissedAnnouncementId, setDismissedAnnouncementId] = useState<string | null>(null);
 
   // Generate initials from user name
   const getInitials = (name: string) => {
@@ -51,37 +61,51 @@ export default function HomeScreen() {
     return name.substring(0, 2).toUpperCase();
   };
 
-  // Use data from getProfile query (API field names)
   const fullName = user?.fullName || "User";
   const userInitials = getInitials(fullName);
   const phoneNumber = user?.phoneNumber || "08000000000";
-  // const balance is now from the hook
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // Run all refetches in parallel
       await Promise.all([
         refetchBalance(),
         refetchTransactions(),
         refetchUser(),
         refetchNotifications(),
+        refetchAnnouncement(),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [
+    refetchBalance,
+    refetchTransactions,
+    refetchUser,
+    refetchNotifications,
+    refetchAnnouncement,
+  ]);
+
+  const showAnnouncement =
+    !!dashboardAnnouncement &&
+    dashboardAnnouncement.id !== dismissedAnnouncementId;
+
+  const dismissAnnouncement = () => {
+    if (!dashboardAnnouncement) return;
+    setDismissedAnnouncementId(dashboardAnnouncement.id);
+    markAnnouncementViewed.mutate(dashboardAnnouncement.id);
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: isDark ? colors.background : "#EFF1F2" }]}>
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-            <RefreshControl 
-                refreshing={refreshing} 
-                onRefresh={onRefresh} 
+            <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
                 colors={[colors.primary]}
                 tintColor={colors.primary}
             />
@@ -95,7 +119,7 @@ export default function HomeScreen() {
           onNotificationsPress={() => router.push('/notifications')}
           notificationCount={unreadNotificationCount}
         />
-        
+
         {/* Notification Banner (Updates/Important) */}
         <NotificationBanner />
 
@@ -113,13 +137,15 @@ export default function HomeScreen() {
             onAddMoney={() => setShowAddMoney(true)}
             isBalanceVisible={isBalanceVisible}
             onToggleBalance={toggleBalanceVisibility}
+            virtualAccountNumber={user?.virtualAccountNumber || (user as any)?.virtualAccounts?.[0]?.accountNumber}
+            virtualAccountBankName={user?.virtualAccountBankName || (user as any)?.virtualAccounts?.[0]?.bankName || undefined}
           />
           <RecentTransactions
             transactions={transactions.slice(0, 2).map(tx => {
               const status = tx.related?.status || 'pending';
               const isCredit = tx.direction === 'credit';
               const isData = isDataTransaction(tx);
-              
+
               return {
                 id: tx.id,
                 type: isCredit ? 'credit' : 'debit',
@@ -150,8 +176,6 @@ export default function HomeScreen() {
           variant="cashback"
           onPress={() => {}}
         />
-
-        {/* Padding handled by contentContainerStyle */}
       </ScrollView>
 
       {/* Reseller Banner - Fixed at bottom above tab bar (Only for non-resellers) */}
@@ -162,9 +186,15 @@ export default function HomeScreen() {
       )}
 
       {/* Add Money Modal */}
-      <AddMoneyModal 
-        isVisible={showAddMoney} 
-        onClose={() => setShowAddMoney(false)} 
+      <AddMoneyModal
+        isVisible={showAddMoney}
+        onClose={() => setShowAddMoney(false)}
+      />
+
+      <DashboardAnnouncementModal
+        visible={showAnnouncement}
+        announcement={dashboardAnnouncement || null}
+        onDismiss={dismissAnnouncement}
       />
     </View>
   );
@@ -178,10 +208,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 80, // Sufficient to clear the fixed banner without extra space
+    paddingBottom: 80,
   },
   balanceSection: {
-    // No gap between BalanceCard and RecentTransactions
     marginBottom: 8,
   },
   resellerContainer: {
