@@ -572,6 +572,7 @@ export function ProductPurchaseScreen({
         markupPercent={getMarkupPercent(item)}
         isEligible={isEligibleForOffer(item)}
         isGuest={!user}
+
       />
     ),
     [selectedProduct, handleProductSelect, getMarkupPercent, isEligibleForOffer, user]
@@ -583,27 +584,6 @@ export function ProductPurchaseScreen({
         options={{
           headerShown: true,
           title,
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.foreground,
-          headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <ArrowLeft size={24} color={colors.foreground} />
-            </TouchableOpacity>
-          ),
-        }}
-      />
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={100}
-      >
-
-
-        {/* Phone Number Input */}
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerLeft: () => (
