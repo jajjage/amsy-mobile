@@ -451,7 +451,7 @@ export default function RegisterScreen() {
                       render={({ field: { onChange, onBlur, value } }) => (
                         <Input variant="outline" size="xl" className="bg-background-0 rounded-xl">
                           <InputField
-                            placeholder="E.g. Optional"
+                            placeholder="Optional"
                             autoCapitalize="characters"
                             onBlur={onBlur}
                             onChangeText={(nextValue) => {
