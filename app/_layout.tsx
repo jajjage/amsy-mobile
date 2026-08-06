@@ -13,6 +13,9 @@ import 'react-native-reanimated';
 import { Toaster } from 'sonner-native';
 import '../global.css';
 
+import { LoadingOverlay } from '@/components/LoadingOverlay';
+import { RootErrorBoundary } from '@/components/RootErrorBoundary';
+import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 import { darkColors, lightColors } from '@/constants/palette';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
 import { SoftLockProvider } from '@/context/SoftLockContext';
@@ -21,10 +24,6 @@ import { useAppRating } from '@/hooks/useAppRating';
 import { useMobileNotificationNavigation } from '@/hooks/useMobileNotificationNavigation';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { installReferrerService } from '@/services/install-referrer.service';
-
-
-import { LoadingOverlay } from '@/components/LoadingOverlay';
-import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 
 /**
  * Amsy Light Theme for React Navigation
@@ -71,7 +70,9 @@ export const unstable_settings = {
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* ignore preventAutoHide errors */
+});
 
 // Create query client
 const queryClient = new QueryClient({
@@ -93,14 +94,23 @@ function AppInitializer() {
   const { isLoading } = useAuthContext();
 
   useEffect(() => {
+    // Hide splash screen when auth loading finishes
     if (!isLoading) {
-      // Hide the native splash screen only when auth loading is complete
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {});
     }
   }, [isLoading]);
 
   useEffect(() => {
-    installReferrerService.captureInstallReferrerOnce();
+    // Fail-safe: Ensure splash screen is ALWAYS hidden within 3s to prevent white screen deadlock
+    const timeoutId = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 3000);
+
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  useEffect(() => {
+    installReferrerService.captureInstallReferrerOnce().catch(() => {});
   }, []);
   
   return <LoadingOverlay visible={isLoading} />;
@@ -117,16 +127,23 @@ export default function RootLayout() {
     if (error) throw error;
   }, [error]);
 
-  // Removed early SplashScreen.hideAsync here - moved to AppInitializer
+  useEffect(() => {
+    if (loaded) {
+      // Hide splash screen as soon as fonts are loaded
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [loaded]);
 
   if (!loaded) {
     return null;
   }
 
   return (
-    <ThemeProvider>
-      <RootLayoutNav />
-    </ThemeProvider>
+    <RootErrorBoundary>
+      <ThemeProvider>
+        <RootLayoutNav />
+      </ThemeProvider>
+    </RootErrorBoundary>
   );
 }
 
@@ -137,7 +154,11 @@ function RootLayoutNav() {
   // This prevents white flashes during navigation transitions
   useEffect(() => {
     const setRootBackground = async () => {
-      await SystemUI.setBackgroundColorAsync(colors.background);
+      try {
+        await SystemUI.setBackgroundColorAsync(colors.background);
+      } catch (e) {
+        // SystemUI background color might not be supported on all platforms/versions
+      }
     };
     setRootBackground();
   }, [colors.background]);
@@ -148,29 +169,29 @@ function RootLayoutNav() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <SoftLockProvider>
-            <AppInitializer />
-            <StatusBar style={isDark ? 'light' : 'dark'} />
-            <NavThemeProvider value={isDark ? AmsyDarkTheme : AmsyLightTheme}>
-              <Stack screenOptions={{ animation: 'slide_from_right' }}>
-                <Stack.Screen name="index" options={{ headerShown: false }} />
-                <Stack.Screen name="(setup)" options={{ headerShown: false }} />
-                <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'none' }} />
-                <Stack.Screen name="transactions" options={{ headerShown: false }} />
-                <Stack.Screen name="notifications" options={{ headerShown: false }} />
-                <Stack.Screen name="airtime" options={{ headerShown: false }} />
-                <Stack.Screen name="data" options={{ headerShown: false }} />
-                <Stack.Screen name="subscription" options={{ headerShown: false }} />
-                <Stack.Screen name="pay-bills" options={{ headerShown: false }} />
-                <Stack.Screen name="electricity" options={{ headerShown: false }} />
-                <Stack.Screen name="cable" options={{ headerShown: false }} />
-                <Stack.Screen name="education" options={{ headerShown: false }} />
-                <Stack.Screen name="more-services" options={{ headerShown: false }} />
-                <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-              </Stack>
-              <Toaster />
-            </NavThemeProvider>
+              <AppInitializer />
+              <StatusBar style={isDark ? 'light' : 'dark'} />
+              <NavThemeProvider value={isDark ? AmsyDarkTheme : AmsyLightTheme}>
+                <Stack screenOptions={{ animation: 'slide_from_right' }}>
+                  <Stack.Screen name="index" options={{ headerShown: false }} />
+                  <Stack.Screen name="(setup)" options={{ headerShown: false }} />
+                  <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
+                  <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'none' }} />
+                  <Stack.Screen name="transactions" options={{ headerShown: false }} />
+                  <Stack.Screen name="notifications" options={{ headerShown: false }} />
+                  <Stack.Screen name="airtime" options={{ headerShown: false }} />
+                  <Stack.Screen name="data" options={{ headerShown: false }} />
+                  <Stack.Screen name="subscription" options={{ headerShown: false }} />
+                  <Stack.Screen name="pay-bills" options={{ headerShown: false }} />
+                  <Stack.Screen name="electricity" options={{ headerShown: false }} />
+                  <Stack.Screen name="cable" options={{ headerShown: false }} />
+                  <Stack.Screen name="education" options={{ headerShown: false }} />
+                  <Stack.Screen name="more-services" options={{ headerShown: false }} />
+                  <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+                </Stack>
+                <Toaster />
+              </NavThemeProvider>
             </SoftLockProvider>
           </AuthProvider>
         </QueryClientProvider>
@@ -178,6 +199,3 @@ function RootLayoutNav() {
     </GestureHandlerRootView>
   );
 }
-
-
-

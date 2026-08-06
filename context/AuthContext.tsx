@@ -62,15 +62,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUserState(storedUser);
         }
 
-        // Prefetch latest profile from API to ensure data is fresh
-        // This keeps the global loader visible until we have the latest data
+        // Prefetch latest profile from API to ensure data is fresh (with 3.5s timeout for fast boot)
         try {
           console.log("[AuthContext] Fetching latest profile...");
-          const profileResponse = await userService.getProfile();
+          const fetchPromise = userService.getProfile();
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Profile fetch timeout on boot")), 3500)
+          );
+
+          const profileResponse = await Promise.race([fetchPromise, timeoutPromise]);
           
           if (profileResponse?.data) {
             // Merge with stored user or use fresh profile
-            // profileResponse.data contains the actual User object
             const freshUser = profileResponse.data as unknown as User; 
             setUserState(freshUser);
             // Update cache
@@ -80,10 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }
         } catch (apiError) {
-          console.warn("[AuthContext] Failed to fetch latest profile, using cached user:", apiError);
-          // If API fails but we have storedUser, we proceed (offline mode or server error)
-          // If no storedUser and API fails, user stays null -> might redirect to login?
-          // If token was invalid, apiClient interceptor might have called markSessionAsExpired
+          console.warn("[AuthContext] Profile fetch bypassed or timed out, using cached user:", apiError);
         }
 
       } catch (error) {

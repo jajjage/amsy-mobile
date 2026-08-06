@@ -125,7 +125,7 @@ export function SoftLockProvider({ children }: { children: React.ReactNode }) {
   return (
     <SoftLockContext.Provider value={{ isLocked, isEnabled, lock, unlock, setEnabled }}>
       {children}
-      {isLocked && isEnabled && <LockScreen onUnlock={unlock} />}
+      {isLocked && isEnabled && user ? <LockScreen onUnlock={unlock} /> : null}
     </SoftLockContext.Provider>
   );
 }
