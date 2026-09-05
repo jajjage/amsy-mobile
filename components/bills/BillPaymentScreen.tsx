@@ -1,4 +1,4 @@
-import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
+import BottomSheet, { BottomSheetScrollView, BottomSheetView } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
 import {
@@ -26,6 +26,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LoadingOverlay } from "@/components/LoadingOverlay";
+import { BillSuccessReceipt } from "@/components/bills/BillSuccessReceipt";
 import { PinPadModal } from "@/components/security/PinPadModal";
 import { designTokens } from "@/constants/palette";
 import { useTheme } from "@/context/ThemeContext";
@@ -53,7 +54,6 @@ export function BillPaymentScreen({ categoryType }: BillPaymentScreenProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const checkoutSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ["58%"], []);
 
   const isElectricity = categoryType === "electricity";
   const isEducation = categoryType === "education";
@@ -78,9 +78,15 @@ export function BillPaymentScreen({ categoryType }: BillPaymentScreenProps) {
   const [lastTransactionId, setLastTransactionId] = useState<string | null>(null);
   const [lastErrorMessage, setLastErrorMessage] = useState<string | null>(null);
   const [lastToken, setLastToken] = useState<string | null>(null);
+  const [lastPayment, setLastPayment] = useState<any | null>(null);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinError, setPinError] = useState<string | undefined>();
   const [pendingPaymentData, setPendingPaymentData] = useState<any | null>(null);
+
+  const snapPoints = useMemo(
+    () => (checkoutMode === "success" ? ["82%", "95%"] : ["58%"]),
+    [checkoutMode]
+  );
 
   const { balance: walletBalance } = useWalletBalance();
   const { data: billers = [], isLoading: billersLoading } = useBillers(categoryType);
@@ -103,7 +109,8 @@ export function BillPaymentScreen({ categoryType }: BillPaymentScreenProps) {
     useBillPaymentFlow({
       onSuccess: (transactionId, _paymentId, payment) => {
         setLastTransactionId(transactionId);
-        const tokenPayload = payment.tokenPayload || {};
+        setLastPayment(payment);
+        const tokenPayload = payment?.tokenPayload || {};
         const token =
           tokenPayload.token ||
           tokenPayload.pin ||
@@ -358,41 +365,26 @@ export function BillPaymentScreen({ categoryType }: BillPaymentScreenProps) {
   const renderConfirmationContent = () => {
     if (checkoutMode === "success") {
       return (
-        <View style={styles.sheetContent}>
-          <CheckCircle size={52} color={colors.success} />
-          <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
-            Payment Submitted
-          </Text>
-          <Text style={[styles.sheetSubtitle, { color: colors.textSecondary }]}>
-            {selectedBillerName} payment for {customerIdentifier}
-          </Text>
-          <View style={[styles.receiptCard, { backgroundColor: colors.muted }]}>
-            <Text style={[styles.receiptAmount, { color: colors.success }]}>
-              {formatMoney(numericAmount)}
-            </Text>
-            {lastTransactionId && (
-              <Text style={[styles.receiptRef, { color: colors.textTertiary }]}>
-                Ref: {lastTransactionId}
-              </Text>
-            )}
-            {lastToken && (
-              <Text style={[styles.receiptRef, { color: colors.foreground }]}>
-                Token: {lastToken}
-              </Text>
-            )}
-          </View>
-          <TouchableOpacity
-            style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-            onPress={() => {
-              checkoutSheetRef.current?.close();
-              router.back();
-            }}
-          >
-            <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>
-              Done
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <BillSuccessReceipt
+          data={{
+            transactionId: lastTransactionId,
+            categoryType,
+            billerName: selectedBillerName,
+            amount: numericAmount,
+            customerIdentifier: customerIdentifier.trim() || undefined,
+            phone: phone.trim() || undefined,
+            customerName: customerName || undefined,
+            variationName: selectedVariation?.name || variationCode || undefined,
+            quantity: isEducation ? numericQuantity : undefined,
+            tokenPayload: lastPayment?.tokenPayload,
+            rawToken: lastToken,
+            timestamp: new Date(),
+          }}
+          onDone={() => {
+            checkoutSheetRef.current?.close();
+            router.back();
+          }}
+        />
       );
     }
 
@@ -822,11 +814,23 @@ export function BillPaymentScreen({ categoryType }: BillPaymentScreenProps) {
         enablePanDownToClose
         backgroundStyle={{ backgroundColor: colors.card }}
         handleIndicatorStyle={{ backgroundColor: colors.border }}
-        onClose={() => setLastToken(null)}
+        onClose={() => {
+          setLastToken(null);
+          setLastPayment(null);
+        }}
       >
-        <BottomSheetView style={styles.sheetView}>
-          {renderConfirmationContent()}
-        </BottomSheetView>
+        {checkoutMode === "success" ? (
+          <BottomSheetScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 24 }}
+          >
+            {renderConfirmationContent()}
+          </BottomSheetScrollView>
+        ) : (
+          <BottomSheetView style={styles.sheetView}>
+            {renderConfirmationContent()}
+          </BottomSheetView>
+        )}
       </BottomSheet>
 
       <PinPadModal
