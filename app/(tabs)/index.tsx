@@ -1,6 +1,8 @@
 // app/(tabs)/index.tsx
 import {
     BalanceCard,
+    DashboardAnnouncementBanner,
+    DashboardAnnouncementModal,
     HeaderBar,
     NotificationBanner,
     PromoBanner,
@@ -10,7 +12,6 @@ import {
     UserProfileCard
 } from "@/components/dashboard";
 import { AddMoneyModal } from "@/components/dashboard/AddMoneyModal";
-import { DashboardAnnouncementModal } from "@/components/dashboard/DashboardAnnouncementModal";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useBalanceVisibility } from "@/hooks/useBalanceVisibility";
@@ -26,10 +27,16 @@ import {
     getTransactionTitle,
     isDataTransaction,
 } from "@/lib/transactionUtils";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const ANNOUNCEMENT_MODAL_INTERVAL = 24 * 60 * 60 * 1000;
+
+const getAnnouncementModalStorageKey = (userId: string, announcementId: string) =>
+  `@amsy:announcement-modal:${userId}:${announcementId}`;
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -50,7 +57,7 @@ export default function HomeScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [showAddMoney, setShowAddMoney] = useState(false);
-  const [dismissedAnnouncementId, setDismissedAnnouncementId] = useState<string | null>(null);
+  const [isAnnouncementModalVisible, setIsAnnouncementModalVisible] = useState(false);
 
   // Generate initials from user name
   const getInitials = (name: string) => {
@@ -64,6 +71,65 @@ export default function HomeScreen() {
   const fullName = user?.fullName || "User";
   const userInitials = getInitials(fullName);
   const phoneNumber = user?.phoneNumber || "08000000000";
+
+  useEffect(() => {
+    if (!dashboardAnnouncement?.endsAt) return;
+
+    const millisecondsUntilExpiry =
+      new Date(dashboardAnnouncement.endsAt).getTime() - Date.now();
+
+    if (millisecondsUntilExpiry <= 0) {
+      void refetchAnnouncement();
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void refetchAnnouncement();
+    }, Math.min(millisecondsUntilExpiry + 250, 24 * 60 * 60 * 1000));
+
+    return () => clearTimeout(timer);
+  }, [dashboardAnnouncement?.endsAt, refetchAnnouncement]);
+
+  useEffect(() => {
+    if (!dashboardAnnouncement || !user?.userId) {
+      setIsAnnouncementModalVisible(false);
+      return;
+    }
+
+    let isActive = true;
+    const checkModalSchedule = async () => {
+      try {
+        const storageKey = getAnnouncementModalStorageKey(
+          user.userId,
+          dashboardAnnouncement.id
+        );
+        const lastShownAt = await AsyncStorage.getItem(storageKey);
+        const elapsed = lastShownAt ? Date.now() - Number(lastShownAt) : Infinity;
+
+        if (isActive && (!lastShownAt || Number.isNaN(elapsed) || elapsed >= ANNOUNCEMENT_MODAL_INTERVAL)) {
+          setIsAnnouncementModalVisible(true);
+        }
+      } catch {
+        if (isActive) {
+          setIsAnnouncementModalVisible(true);
+        }
+      }
+    };
+
+    void checkModalSchedule();
+    return () => {
+      isActive = false;
+    };
+  }, [dashboardAnnouncement?.id, user?.userId]);
+
+  const dismissAnnouncementModal = useCallback(() => {
+    setIsAnnouncementModalVisible(false);
+    if (!dashboardAnnouncement || !user?.userId) return;
+
+    const storageKey = getAnnouncementModalStorageKey(user.userId, dashboardAnnouncement.id);
+    void AsyncStorage.setItem(storageKey, String(Date.now()));
+    markAnnouncementViewed.mutate(dashboardAnnouncement.id);
+  }, [dashboardAnnouncement, markAnnouncementViewed, user?.userId]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -85,16 +151,6 @@ export default function HomeScreen() {
     refetchNotifications,
     refetchAnnouncement,
   ]);
-
-  const showAnnouncement =
-    !!dashboardAnnouncement &&
-    dashboardAnnouncement.id !== dismissedAnnouncementId;
-
-  const dismissAnnouncement = () => {
-    if (!dashboardAnnouncement) return;
-    setDismissedAnnouncementId(dashboardAnnouncement.id);
-    markAnnouncementViewed.mutate(dashboardAnnouncement.id);
-  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: isDark ? colors.background : "#EFF1F2" }]}>
@@ -123,12 +179,19 @@ export default function HomeScreen() {
         {/* Notification Banner (Updates/Important) */}
         <NotificationBanner />
 
-        {/* User Profile with Logo */}
-        <UserProfileCard
-          initials={userInitials}
-          fullName={fullName}
-          phoneNumber={phoneNumber}
-        />
+        {/* User Profile or Active Announcement Ticker Banner */}
+        {dashboardAnnouncement ? (
+          <DashboardAnnouncementBanner
+            announcement={dashboardAnnouncement}
+            onPress={() => setIsAnnouncementModalVisible(true)}
+          />
+        ) : (
+          <UserProfileCard
+            initials={userInitials}
+            fullName={fullName}
+            phoneNumber={phoneNumber}
+          />
+        )}
 
         {/* Balance Card + Transaction History (connected) */}
         <View style={styles.balanceSection}>
@@ -193,9 +256,9 @@ export default function HomeScreen() {
       />
 
       <DashboardAnnouncementModal
-        visible={showAnnouncement}
+        visible={isAnnouncementModalVisible}
         announcement={dashboardAnnouncement || null}
-        onDismiss={dismissAnnouncement}
+        onDismiss={dismissAnnouncementModal}
       />
     </View>
   );

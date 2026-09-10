@@ -1,13 +1,13 @@
 import { useTheme } from "@/context/ThemeContext";
 import { DashboardAnnouncement } from "@/types/announcement.types";
-import { Megaphone } from "lucide-react-native";
+import { Megaphone, X } from "lucide-react-native";
 import React from "react";
 import {
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -28,50 +28,49 @@ export function DashboardAnnouncementModal({
 
   return (
     <Modal
-      visible={visible}
-      transparent
       animationType="fade"
-      statusBarTranslucent
       onRequestClose={onDismiss}
+      statusBarTranslucent
+      transparent
+      visible={visible}
     >
       <View style={styles.overlay}>
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: isDark ? colors.card : "#FFFFFF" },
-          ]}
-        >
+        <View style={[styles.card, { backgroundColor: isDark ? colors.card : "#FFFFFF" }]}>
           <View style={styles.header}>
-            <View
-              style={[
-                styles.iconWrap,
-                { backgroundColor: `${colors.primary}18` },
-              ]}
-            >
-              <Megaphone size={22} color={colors.primary} />
+            <View style={[styles.iconWrap, { backgroundColor: `${colors.primary}14` }]}>
+              <Megaphone color={colors.primary} size={24} strokeWidth={2.2} />
             </View>
-            <Text style={[styles.title, { color: colors.foreground }]}>
-              {announcement.title}
-            </Text>
+            <Text style={[styles.title, { color: colors.foreground }]}>{announcement.title}</Text>
+            <Pressable
+              accessibilityLabel="Dismiss announcement"
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={onDismiss}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+            >
+              <X color={colors.mutedForeground || "#888888"} size={22} strokeWidth={2.4} />
+            </Pressable>
           </View>
 
           <ScrollView
-            style={styles.messageScroll}
             contentContainerStyle={styles.messageContent}
-            showsVerticalScrollIndicator
+            showsVerticalScrollIndicator={false}
+            style={styles.messageScroll}
           >
-            <Text style={[styles.message, { color: colors.foreground }]}>
-              {announcement.message}
-            </Text>
+            <Text style={[styles.message, { color: colors.foreground }]}>{announcement.message}</Text>
           </ScrollView>
 
-          <TouchableOpacity
-            activeOpacity={0.85}
+          <Pressable
+            accessibilityRole="button"
             onPress={onDismiss}
-            style={[styles.button, { backgroundColor: colors.primary }]}
+            style={({ pressed }) => [
+              styles.button,
+              { backgroundColor: colors.primary },
+              pressed && styles.buttonPressed,
+            ]}
           >
             <Text style={styles.buttonText}>OK</Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -80,62 +79,81 @@ export function DashboardAnnouncementModal({
 
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1,
     alignItems: "center",
+    backgroundColor: "rgba(8, 23, 47, 0.58)",
+    flex: 1,
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
     padding: 24,
   },
   card: {
-    width: "100%",
-    maxWidth: 420,
+    borderRadius: 24,
+    elevation: 16,
     maxHeight: "72%",
-    borderRadius: 18,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    elevation: 12,
+    maxWidth: 420,
+    padding: 24,
+    shadowColor: "#08172F",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.28,
+    shadowRadius: 28,
+    width: "100%",
   },
   header: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 14,
+    flexDirection: "row",
+    gap: 14,
+    marginBottom: 18,
   },
   iconWrap: {
-    height: 42,
-    width: 42,
     alignItems: "center",
+    borderRadius: 22,
+    height: 44,
     justifyContent: "center",
-    borderRadius: 21,
+    width: 44,
   },
   title: {
     flex: 1,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "800",
+    letterSpacing: -0.3,
+  },
+  closeButton: {
+    alignItems: "center",
+    borderRadius: 16,
+    height: 32,
+    justifyContent: "center",
+    width: 32,
+  },
+  closeButtonPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.96 }],
   },
   messageScroll: {
-    maxHeight: 360,
+    maxHeight: 280,
   },
   messageContent: {
     paddingBottom: 8,
   },
   message: {
     fontSize: 16,
-    lineHeight: 23,
+    lineHeight: 24,
   },
   button: {
+    alignItems: "center",
     alignSelf: "flex-end",
-    borderRadius: 12,
-    marginTop: 18,
+    borderRadius: 14,
+    justifyContent: "center",
+    marginTop: 24,
+    minHeight: 52,
+    minWidth: 88,
     paddingHorizontal: 22,
-    paddingVertical: 12,
+  },
+  buttonPressed: {
+    opacity: 0.86,
+    transform: [{ scale: 0.98 }],
   },
   buttonText: {
     color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "800",
   },
 });

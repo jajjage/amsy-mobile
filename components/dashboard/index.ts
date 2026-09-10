@@ -1,5 +1,7 @@
 // components/dashboard/index.ts
 export { BalanceCard } from "./BalanceCard";
+export { DashboardAnnouncementBanner } from "./DashboardAnnouncementBanner";
+export { DashboardAnnouncementModal } from "./DashboardAnnouncementModal";
 export { HeaderBar } from "./HeaderBar";
 export { NotificationBanner } from "./NotificationBanner";
 export { PromoBanner } from "./PromoBanner";
@@ -7,4 +9,3 @@ export { QuickActions } from "./QuickActions";
 export { RecentTransactions } from "./RecentTransactions";
 export { ResellerBanner } from "./ResellerBanner";
 export { UserProfileCard } from "./UserProfileCard";
-
