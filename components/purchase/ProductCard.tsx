@@ -1,28 +1,27 @@
 /**
- * ProductCard - Product display card with markup pricing
- * Per mobile-airtime-data-guide.md Section 3.D
- * Updated with correct offer/discount display logic
+ * ProductCard - Modern High-Performance Product Display Card
+ * Emil Design Engineering principles: Crisp typography, well-proportioned density, instant feedback
  */
 
-import { darkColors, designTokens, lightColors } from "@/constants/palette";
+import { darkColors, lightColors } from "@/constants/palette";
 import { getResolvedProductPrice } from "@/lib/price-calculator";
 import { Product } from "@/types/product.types";
 import { Check, Lock, Sparkles, Zap } from "lucide-react-native";
 import React from "react";
 import {
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    useColorScheme,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useColorScheme,
 } from "react-native";
 
-interface ProductCardProps {
+export interface ProductCardProps {
   product: Product;
   isSelected: boolean;
   onSelect: (product: Product) => void;
-  markupPercent: number;
-  isEligibleForOffer: boolean;
+  markupPercent?: number;
+  isEligibleForOffer?: boolean;
   isGuest?: boolean;
 }
 
@@ -30,47 +29,35 @@ export function ProductCard({
   product,
   isSelected,
   onSelect,
-  markupPercent,
-  isEligibleForOffer,
+  markupPercent = 0,
+  isEligibleForOffer = false,
   isGuest = false,
 }: ProductCardProps) {
   const colorScheme = useColorScheme();
-  const colors = colorScheme === "dark" ? darkColors : lightColors;
+  const isDark = colorScheme === "dark";
+  const colors = isDark ? darkColors : lightColors;
 
-  // === PRICING LOGIC ===
-  // 1. Base Price (backend-resolved role price, fallback to denomAmount)
   const faceValue = getResolvedProductPrice(product);
   const supplierPrice = product.supplierOffers?.[0]?.supplierPrice
     ? parseFloat(product.supplierOffers[0].supplierPrice.toString())
     : 0;
 
-  // 2. Role-based base price is the selling price now.
   const baseSellingPrice = faceValue;
-
-  // === OFFER LOGIC ===
   const hasOffer = !!product.activeOffer;
-  
-  // Determine if user should see discounted pricing
-  // Guests: See the discount (incentive to log in)
-  // Eligible Users: See and get the discount
-  // Ineligible Users: See grayed badge, pay full price
   const showDiscountedPrice = hasOffer && (isGuest || isEligibleForOffer);
 
-  // 3. Calculate Display Price
   let displayPrice = baseSellingPrice;
   let discountPercent = 0;
 
   if (showDiscountedPrice && product.activeOffer) {
     const offer = product.activeOffer;
 
-    // Source 1: Backend-calculated discountedPrice
     if (product.discountedPrice) {
       displayPrice = product.discountedPrice;
       discountPercent = Math.round(
         ((faceValue - displayPrice) / faceValue) * 100
       );
     } else {
-      // Source 2: Client-calculated based on discountType
       switch (offer.discountType) {
         case "percentage":
           displayPrice = baseSellingPrice * (1 - offer.discountValue / 100);
@@ -93,17 +80,18 @@ export function ProductCard({
   }
 
   let hasDiscount = false;
-  
   if (showDiscountedPrice && displayPrice < baseSellingPrice) {
     hasDiscount = true;
   }
-  
-  // === SUPPLIER DISCOUNT LOGIC (When no active offer) ===
+
   const hasValidSupplierDiscount =
     supplierPrice > 0 && supplierPrice < faceValue && !product.resolvedPrice;
-  
-  // If no active offer, but supplier price gives a discount
-  if (!showDiscountedPrice && hasValidSupplierDiscount && baseSellingPrice < faceValue) {
+
+  if (
+    !showDiscountedPrice &&
+    hasValidSupplierDiscount &&
+    baseSellingPrice < faceValue
+  ) {
     hasDiscount = true;
     displayPrice = baseSellingPrice;
     discountPercent = Math.round(
@@ -111,138 +99,108 @@ export function ProductCard({
     );
   }
 
-  // Cashback info
   const hasCashback = product.has_cashback && product.cashback_percentage;
-  const cashbackAmount = hasCashback
-    ? (displayPrice * (product.cashback_percentage || 0)) / 100
-    : 0;
 
-  // Format data size
-  const formatDataSize = () => {
-    if (!product.dataMb) return null;
-    if (product.dataMb >= 1024) {
-      return `${(product.dataMb / 1024).toFixed(product.dataMb % 1024 === 0 ? 0 : 1)} GB`;
-    }
-    return `${product.dataMb} MB`;
-  };
+  // Format data size cleanly
+  const dataSize = product.dataMb
+    ? product.dataMb >= 1024
+      ? `${(product.dataMb / 1024).toFixed(
+          product.dataMb % 1024 === 0 ? 0 : 1
+        )} GB`
+      : `${product.dataMb} MB`
+    : null;
 
-  const dataSize = formatDataSize();
   const validityText = product.validityDays
     ? product.validityDays === 1
       ? "1 Day"
       : `${product.validityDays} Days`
     : null;
 
-  // === BADGE LOGIC ===
-  // Condition: hasOffer && isGuest → "🔓 Login to Claim" (Blue)
-  // Condition: hasOffer && isEligibleForOffer → "🎉 {offer.title}" (Green, pulsing)
-  // Condition: hasOffer && !isEligibleForOffer → "{offer.title}" (Grayed out)
-  // Condition: discountPercentage > 0 → "-X% OFF" (Orange-Red)
-
-  const renderOfferBadge = () => {
-    if (!hasOffer || !product.activeOffer) return null;
-
-    if (isGuest) {
-      return (
-        <View style={[styles.badge, styles.guestBadge]}>
-          <Lock size={10} color="#FFFFFF" />
-          <Text style={styles.badgeText}>Login to Claim</Text>
-        </View>
-      );
-    }
-
-    if (isEligibleForOffer) {
-      return (
-        <View style={[styles.badge, styles.eligibleBadge]}>
-          <Sparkles size={10} color="#FFFFFF" />
-          <Text style={styles.badgeText}>
-            {product.activeOffer.title || "Special Deal"}
-          </Text>
-        </View>
-      );
-    }
-
-    // Ineligible - grayed out
-    return (
-      <View style={[styles.badge, styles.ineligibleBadge]}>
-        <Text style={[styles.badgeText, { color: colors.textSecondary }]}>
-          {product.activeOffer.title || "Limited Offer"}
-        </Text>
-      </View>
-    );
-  };
+  const selectedCardBg = `${colors.primary}14`;
+  const borderColor = isSelected
+    ? colors.primary
+    : isDark
+    ? "#334155"
+    : "#E2E8F0";
 
   return (
     <TouchableOpacity
       style={[
         styles.card,
         {
-          backgroundColor: colors.card,
-          borderColor: isSelected ? colors.primary : colors.border,
-          borderWidth: isSelected ? 2 : 1,
+          backgroundColor: isSelected ? selectedCardBg : colors.card,
+          borderColor,
+          borderWidth: isSelected ? 1.5 : 1,
         },
       ]}
       onPress={() => onSelect(product)}
-      activeOpacity={0.7}
+      activeOpacity={0.6}
     >
-      {/* Discount Percentage Badge - Top Left */}
+      {/* Top Badges (Discount / Offer) */}
       {discountPercent > 0 && hasDiscount && (
         <View style={styles.discountBadge}>
           <Text style={styles.discountBadgeText}>-{discountPercent}%</Text>
         </View>
       )}
 
-      {/* Offer Badge - Below discount */}
-      <View style={styles.offerBadgeContainer}>{renderOfferBadge()}</View>
-
-      {/* Selected Indicator */}
-      {isSelected && (
-        <View
-          style={[styles.selectedBadge, { backgroundColor: colors.primary }]}
-        >
-          <Check size={14} color={colors.primaryForeground} strokeWidth={3} />
+      {hasOffer && !discountPercent && (
+        <View style={styles.offerBadge}>
+          {isGuest ? (
+            <Lock size={8.5} color="#FFFFFF" />
+          ) : (
+            <Sparkles size={8.5} color="#FFFFFF" />
+          )}
+          <Text style={styles.offerBadgeText}>
+            {isGuest ? "Login" : "Offer"}
+          </Text>
         </View>
       )}
 
-      {/* Main Content */}
-      <View style={styles.content}>
-        {/* Data Size or Product Name */}
+      {/* Selected Indicator - Check mark in top right */}
+      {isSelected && (
+        <View style={[styles.selectedBadge, { backgroundColor: colors.primary }]}>
+          <Check size={11} color={colors.primaryForeground || "#FFFFFF"} strokeWidth={3} />
+        </View>
+      )}
+
+      {/* Top Header: Data Size / Plan Title */}
+      <View style={styles.headerRow}>
         <Text
           style={[styles.mainText, { color: colors.foreground }]}
           numberOfLines={1}
         >
           {dataSize || product.name}
         </Text>
+      </View>
 
-        {/* Validity */}
-        {validityText && (
-          <Text style={[styles.validityText, { color: colors.textSecondary }]}>
-            {validityText}
+      {/* Middle Row: Price */}
+      <View style={styles.priceRow}>
+        <Text style={[styles.price, { color: isSelected ? colors.primary : colors.foreground }]}>
+          ₦{Math.round(displayPrice).toLocaleString()}
+        </Text>
+
+        {hasDiscount && (
+          <Text style={[styles.originalPrice, { color: colors.textTertiary }]}>
+            ₦{Math.round(faceValue).toLocaleString()}
           </Text>
         )}
       </View>
 
-      {/* Price & Cashback Footer */}
-      <View style={styles.footer}>
-        <View style={styles.priceContainer}>
-          <Text style={[styles.price, { color: colors.primary }]}>
-            ₦{displayPrice.toLocaleString()}
+      {/* Bottom Row: Validity & Cashback */}
+      <View style={styles.footerRow}>
+        {validityText ? (
+          <Text style={[styles.validityText, { color: colors.textSecondary }]}>
+            {validityText}
           </Text>
+        ) : (
+          <View />
+        )}
 
-          {/* Strikethrough (Original Price) */}
-          {hasDiscount && (
-            <Text style={[styles.originalPrice, { color: colors.textTertiary }]}>
-              ₦{faceValue.toLocaleString()}
-            </Text>
-          )}
-        </View>
-
-        {/* Cashback Badge (Relative Logic) */}
         {hasCashback && (
           <View
-            style={[styles.cashbackBadge, { backgroundColor: `${colors.info}20` }]}
+            style={[styles.cashbackBadge, { backgroundColor: `${colors.info}18` }]}
           >
-            <Zap size={10} color={colors.info} />
+            <Zap size={9} color={colors.info} />
             <Text style={[styles.cashbackText, { color: colors.info }]}>
               +{product.cashback_percentage}%
             </Text>
@@ -255,110 +213,103 @@ export function ProductCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: designTokens.radius.lg,
-    padding: designTokens.spacing.md,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     position: "relative",
-    minHeight: 110,
+    minHeight: 84,
     justifyContent: "space-between",
   },
   discountBadge: {
     position: "absolute",
     top: -6,
-    left: -6,
+    left: -2,
     backgroundColor: "#FF6B35",
-    paddingHorizontal: designTokens.spacing.sm,
-    paddingVertical: 3,
-    borderRadius: designTokens.radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
     zIndex: 2,
   },
   discountBadgeText: {
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
   },
-  offerBadgeContainer: {
+  offerBadge: {
     position: "absolute",
-    top: 16,
-    left: -6,
-    zIndex: 1,
-  },
-  badge: {
+    top: -6,
+    left: -2,
+    backgroundColor: "#10B981",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: designTokens.spacing.sm,
-    paddingVertical: 3,
-    borderRadius: designTokens.radius.sm,
-    gap: 4,
+    gap: 3,
+    zIndex: 2,
   },
-  guestBadge: {
-    backgroundColor: "#4F46E5", // Indigo/Blue gradient
-  },
-  eligibleBadge: {
-    backgroundColor: "#10B981", // Green
-  },
-  ineligibleBadge: {
-    backgroundColor: "rgba(0,0,0,0.1)",
-  },
-  badgeText: {
+  offerBadgeText: {
     color: "#FFFFFF",
     fontSize: 9,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   selectedBadge: {
     position: "absolute",
-    top: designTokens.spacing.sm,
-    right: designTokens.spacing.sm,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 9,
+    right: 9,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     justifyContent: "center",
     alignItems: "center",
+    zIndex: 3,
   },
-  content: {
-    flex: 1,
-    marginBottom: designTokens.spacing.xs,
-    marginTop: designTokens.spacing.lg,
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingRight: 18,
   },
   mainText: {
-    fontSize: designTokens.fontSize.lg,
+    fontSize: 15.5,
     fontWeight: "700",
+    letterSpacing: -0.3,
   },
-  validityText: {
-    fontSize: designTokens.fontSize.xs,
-    marginTop: 2,
-  },
-  footer: {
+  priceRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    marginTop: "auto",
-  },
-  priceContainer: {
-    flexDirection: "column", // Stack price and original price cleanly? Or row?
-    // Let's use column to ensure width conservation if needed, or flex-start
-    alignItems: "flex-start",
+    alignItems: "baseline",
+    gap: 5,
+    marginVertical: 2,
   },
   price: {
-    fontSize: designTokens.fontSize.base,
-    fontWeight: "700",
+    fontSize: 16.5,
+    fontWeight: "800",
+    letterSpacing: -0.3,
   },
   originalPrice: {
-    fontSize: designTokens.fontSize.xs,
+    fontSize: 11,
     textDecorationLine: "line-through",
-    marginTop: -2,
+  },
+  footerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  validityText: {
+    fontSize: 12,
+    fontWeight: "500",
   },
   cashbackBadge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: designTokens.radius.sm,
-    gap: 2,
-    marginLeft: 4,
-    marginBottom: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    gap: 2.5,
   },
   cashbackText: {
-    fontSize: 10,
-    fontWeight: "600",
+    fontSize: 9.5,
+    fontWeight: "700",
   },
 });

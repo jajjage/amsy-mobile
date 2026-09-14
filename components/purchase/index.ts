@@ -6,6 +6,7 @@ export type { CheckoutData, CheckoutMode } from "./CheckoutModal";
 export { NetworkDetectorInput } from "./NetworkDetectorInput";
 export { NetworkSelector } from "./NetworkSelector";
 export { PlanGrid } from "./PlanGrid";
+export { PortedNumberBypass } from "./PortedNumberBypass";
 export { ProductCard } from "./ProductCard";
 export { SuccessReceipt } from "./SuccessReceipt";
-
+export { TransactionReceipt } from "./TransactionReceipt";

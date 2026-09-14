@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -29,6 +30,7 @@ import {
   CheckoutMode,
   NetworkDetectorInput,
   NetworkSelector,
+  PortedNumberBypass,
   ProductCard,
 } from "@/components/purchase";
 import { PinPadModal } from "@/components/security/PinPadModal";
@@ -38,6 +40,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBiometricAuth } from "@/hooks/useBiometric";
 import { useCategories } from "@/hooks/useCategories";
 import { useCompletePaymentFlow } from "@/hooks/useCompletePaymentFlow";
+import { getAppPreferences } from "@/hooks/useAppPreferences";
+import { useNetworkAutoDetectionPreference } from "@/hooks/useNetworkAutoDetectionPreference";
 import { useProducts } from "@/hooks/useProducts";
 import { useSupplierMarkupMap } from "@/hooks/useSupplierMarkup";
 import { useTopup } from "@/hooks/useTopup";
@@ -50,14 +54,25 @@ import {
   isValidNigerianPhone,
   normalizePhoneNumber,
 } from "@/lib/detectNetwork";
-import { calculateFinalPrice, getResolvedProductPrice } from "@/lib/price-calculator";
-import { Product } from "@/types/product.types";
+import {
+  calculateFinalPrice,
+  getResolvedProductPrice,
+} from "@/lib/price-calculator";
+import { Product, ProductCategory } from "@/types/product.types";
 import { getUserFriendlyError } from "@/utils/errors";
 
 const { width } = Dimensions.get("window");
 const NUM_COLUMNS = 2;
 const CARD_GAP = 12;
-const CARD_WIDTH = (width - 32 - CARD_GAP) / NUM_COLUMNS;
+const HORIZONTAL_PADDING = 16;
+const CARD_WIDTH = (width - (HORIZONTAL_PADDING * 2) - CARD_GAP) / NUM_COLUMNS;
+
+const DEFAULT_NETWORKS: NetworkInfo[] = [
+  NETWORK_PROVIDERS.mtn,
+  NETWORK_PROVIDERS.airtel,
+  NETWORK_PROVIDERS.glo,
+  NETWORK_PROVIDERS["9mobile"],
+].filter(Boolean) as NetworkInfo[];
 
 type ProductPurchaseScreenProps = {
   productType?: string;
@@ -80,11 +95,10 @@ export function ProductPurchaseScreen({
   const showCategories = productType === "data";
 
   // === STATE PER GUIDE SECTION 4 ===
-  // Shared
+  // Shared - pre-initialize with default MTN so initial frame renders immediately (0ms)
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [selectedNetwork, setSelectedNetwork] = useState<NetworkProvider | null>(null);
+  const [selectedNetwork, setSelectedNetwork] = useState<NetworkProvider | null>("mtn");
   const [detectedNetwork, setDetectedNetwork] = useState<NetworkProvider | null>(null);
-  const [networkMismatch, setNetworkMismatch] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
@@ -101,29 +115,51 @@ export function ProductPurchaseScreen({
 
   // Refs
   const checkoutSheetRef = useRef<BottomSheet>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // === HOOKS ===
-  const { data: productsData, isLoading: productsLoading } = useProducts({
-    productType,
-    isActive: true,
-  });
-  const { data: categories = [], isLoading: categoriesLoading } = useCategories();
+  const {
+    data: productsData,
+    isLoading: productsLoading,
+    isFetching: productsFetching,
+    isError: productsError,
+    error: productsLoadError,
+    refetch: refetchProducts,
+  } = useProducts(
+    {
+      productType,
+      isActive: true,
+      perPage: 100,
+      limit: 100,
+    },
+    { retry: 1 }
+  );
+  const { data: categories = [], isLoading: categoriesLoading } = useCategories(productType);
   const markupMap = useSupplierMarkupMap();
   const { eligibleIds } = useEligibleOffers();
   const { mutateAsync: topup, isPending: isTopupPending } = useTopup();
   const { balance: walletBalance } = useWalletBalance();
   const { user } = useAuth();
+  const { isAutoDetectionEnabled, setIsAutoDetectionEnabled } =
+    useNetworkAutoDetectionPreference();
   const { authenticate, checkBiometricSupport } = useBiometricAuth();
   const { processPayment, submitPIN, reset: resetPaymentFlow, isLoading: isPaymentProcessing, currentStep: paymentStep, error: paymentError } = useCompletePaymentFlow({
     onSuccess: (transactionId) => {
-
+      if (!isMountedRef.current) return;
       setLastTransactionId(transactionId);
       setLastErrorMessage(null);
       setCheckoutMode("success");
       checkoutSheetRef.current?.expand();
     },
     onError: (error) => {
-
+      if (!isMountedRef.current) return;
       setLastErrorMessage(error);
       setCheckoutMode("failed");
       checkoutSheetRef.current?.expand();
@@ -134,24 +170,14 @@ export function ProductPurchaseScreen({
   const normalizedPhone = normalizePhoneNumber(phoneNumber);
   const isPhoneValid = isValidNigerianPhone(normalizedPhone);
 
-  // === NETWORK MISMATCH DETECTION ===
-  useEffect(() => {
-    if (detectedNetwork && selectedNetwork && detectedNetwork !== selectedNetwork) {
-      setNetworkMismatch(true);
-    } else {
-      setNetworkMismatch(false);
-    }
-  }, [detectedNetwork, selectedNetwork]);
-
-  // Derive unique networks from products
+  // Derive unique networks from products (falls back to DEFAULT_NETWORKS instantly)
   const networks = useMemo(() => {
-    if (!productsData?.products) return [];
+    if (!productsData?.products?.length) return DEFAULT_NETWORKS;
 
     const uniqueNetworks = new Map<string, NetworkInfo>();
 
     productsData.products.forEach((p: Product) => {
       if (p.operator && p.operator.name) {
-        // Ensure strictly typed slug
         const rawName = p.operator.name.toLowerCase();
         let slug: NetworkProvider;
         
@@ -159,21 +185,22 @@ export function ProductPurchaseScreen({
         else if (rawName.includes("glo")) slug = "glo";
         else if (rawName.includes("airtel")) slug = "airtel";
         else if (rawName.includes("9mobile") || rawName.includes("etisalat")) slug = "9mobile";
-        else return; // Skip unknown operators
+        else return;
 
         if (!uniqueNetworks.has(slug)) {
-          // Use API data, fallback to local constant for color/logo if missing
           const localInfo = NETWORK_PROVIDERS[slug];
           uniqueNetworks.set(slug, {
             name: p.operator.name,
             slug: slug,
             color: localInfo?.color || "#000000",
             logoUrl: p.operator.logoUrl || localInfo?.logoUrl,
-            logo: localInfo?.logo || p.operator.logoUrl // Prioritize local asset
+            logo: localInfo?.logo || p.operator.logoUrl
           });
         }
       }
     });
+
+    if (uniqueNetworks.size === 0) return DEFAULT_NETWORKS;
 
     // Sort: MTN first, then alphabetical
     return Array.from(uniqueNetworks.values()).sort((a, b) => {
@@ -183,7 +210,7 @@ export function ProductPurchaseScreen({
     });
   }, [productsData]);
 
-  // Auto-select first network on load
+  // Auto-select first network on load if not selected
   useEffect(() => {
     if (!selectedNetwork && networks.length > 0) {
       setSelectedNetwork(networks[0].slug);
@@ -191,12 +218,10 @@ export function ProductPurchaseScreen({
   }, [networks, selectedNetwork]);
 
   // === CATEGORY FILTERING BY SELECTED NETWORK & PRODUCT AVAILABILITY ===
-  // Only show a category tab if there is at least 1 active product for the currently selected network
   const visibleCategories = useMemo(() => {
     if (!categories.length) return [];
     if (!productsData?.products?.length) return categories;
 
-    // Filter products for current productType and selectedNetwork
     const productsForNetwork = productsData.products.filter((p: Product) => {
       if (p.productType?.toLowerCase() !== productType?.toLowerCase()) return false;
       if (p.isActive === false) return false;
@@ -216,7 +241,6 @@ export function ProductPurchaseScreen({
       return true;
     });
 
-    // Gather set of categories that have products for this network
     const activeCategoryIdentifiers = new Set<string>();
     productsForNetwork.forEach((p: Product) => {
       if (p.category?.slug) activeCategoryIdentifiers.add(p.category.slug.toLowerCase());
@@ -224,7 +248,6 @@ export function ProductPurchaseScreen({
       if (p.categoryId) activeCategoryIdentifiers.add(p.categoryId.toLowerCase());
     });
 
-    // Filter DB categories to ONLY those present in activeCategoryIdentifiers for this network
     const filtered = categories.filter((c: ProductCategory) =>
       activeCategoryIdentifiers.has(c.slug.toLowerCase()) ||
       activeCategoryIdentifiers.has(c.name.toLowerCase()) ||
@@ -234,7 +257,7 @@ export function ProductPurchaseScreen({
     return filtered.length > 0 ? filtered : categories;
   }, [categories, productsData, productType, selectedNetwork]);
 
-  // Auto-select first valid category from visibleCategories on load or network change
+  // Auto-select first valid category when visibleCategories or selectedNetwork changes
   useEffect(() => {
     if (showCategories && visibleCategories.length > 0) {
       const isCurrentValid = visibleCategories.some(
@@ -253,27 +276,28 @@ export function ProductPurchaseScreen({
     if (!productsData?.products) return [];
 
     let products = productsData.products.filter(
-      (product: Product) => product.productType === productType
+      (product: Product) => product.productType?.toLowerCase() === productType?.toLowerCase()
     );
 
     // Step 1: Filter by selected network
     if (selectedNetwork) {
-      // Find the specific operator name for this network from our derived list
       const operatorInfo = networks.find(n => n.slug === selectedNetwork);
-      
       if (operatorInfo) {
-        products = products.filter((p: Product) =>
-          p.operator?.name === operatorInfo.name
-        );
+        products = products.filter((p: Product) => {
+          const pOpName = p.operator?.name?.toLowerCase() || "";
+          const opName = operatorInfo.name?.toLowerCase() || "";
+          const opSlug = operatorInfo.slug?.toLowerCase() || "";
+          return pOpName.includes(opSlug) || opName.includes(pOpName) || pOpName === opName;
+        });
       }
     }
 
-    // Step 2: Filter by selected category when this product type uses categories.
+    // Step 2: Filter by selected category
     if (showCategories && selectedCategory) {
       products = products.filter(
         (p: Product) =>
-          p.category?.slug?.toLowerCase() ===
-          (selectedCategory ?? "").toLowerCase()
+          p.category?.slug?.toLowerCase() === selectedCategory.toLowerCase() ||
+          p.categoryId === selectedCategory
       );
     }
 
@@ -287,15 +311,14 @@ export function ProductPurchaseScreen({
 
     // Sort by denomination amount (small to large)
     products = products.sort((a, b) => {
-      const aAmount = parseFloat(a.denomAmount || "0");
-      const bAmount = parseFloat(b.denomAmount || "0");
+      const aAmount = getResolvedProductPrice(a);
+      const bAmount = getResolvedProductPrice(b);
       return aAmount - bAmount;
     });
 
     return products;
   }, [productsData, productType, selectedNetwork, selectedCategory, showCategories]);
 
-  // Get markup percent for a product
   const getMarkupPercent = useCallback(
     (product: Product) => {
       if (!product?.supplierOffers?.[0]) return 0;
@@ -305,7 +328,6 @@ export function ProductPurchaseScreen({
     [markupMap]
   );
 
-  // Check if user is eligible for an offer
   const isEligibleForOffer = useCallback(
     (product: Product) => {
       if (!product.activeOffer?.id) return false;
@@ -314,191 +336,156 @@ export function ProductPurchaseScreen({
     [eligibleIds]
   );
 
-  // Calculate display price for a product - SIMPLIFIED (no markup)
-  // Priority: discountedPrice from backend > offer calculation > base price
-  const getDisplayPrice = useCallback(
-    (product: Product) => {
-      // If backend provides discountedPrice, use it directly
-      // This ensures consistency with ProductCard display
-      if (product.discountedPrice !== undefined && product.discountedPrice !== null && product.discountedPrice > 0) {
-        return product.discountedPrice;
-      }
-
-      const basePrice = getResolvedProductPrice(product);
-
-      if (product.discountedPrice !== undefined && product.discountedPrice !== null && product.discountedPrice > 0) {
-        return product.discountedPrice;
-      }
-
-      let sellingPrice = basePrice;
-
-      // Apply discount if eligible (fallback for products without discountedPrice)
-      if (product.activeOffer && isEligibleForOffer(product)) {
-        const { discountType, discountValue } = product.activeOffer;
-        if (discountType === "percentage") {
-          sellingPrice = sellingPrice * (1 - discountValue / 100);
-        } else if (discountType === "fixed_amount") {
-          sellingPrice = sellingPrice - discountValue;
-        }
-      }
-
-      return sellingPrice;
-    },
-    [isEligibleForOffer]
-  );
-
   // === HANDLERS ===
   const handleNetworkDetected = useCallback(
     (network: NetworkProvider | null) => {
-      setDetectedNetwork(network); // Updates state
+      setDetectedNetwork(network);
 
-      if (network) {
-        // Smart Switch: If detected network exists in our available networks list, select it
+      if (isAutoDetectionEnabled && network) {
         const isAvailable = networks.some(n => n.slug === network);
         if (isAvailable && selectedNetwork !== network) {
           setSelectedNetwork(network);
-          setSelectedProduct(null); // Reset product
-          Haptics.selectionAsync();
+          setSelectedProduct(null);
         }
       }
     },
-    [networks, selectedNetwork]
+    [isAutoDetectionEnabled, networks, selectedNetwork]
   );
 
   const handleNetworkSelect = useCallback((network: NetworkProvider) => {
-    Haptics.selectionAsync();
     setSelectedNetwork(network);
-    setSelectedProduct(null); // Reset product on network change
+    setSelectedProduct(null);
   }, []);
 
   const handleCategorySelect = useCallback((category: string) => {
-    Haptics.selectionAsync();
     setSelectedCategory(category);
-    setSelectedProduct(null); // Reset product on category change
+    setSelectedProduct(null);
   }, []);
 
   const handleProductSelect = useCallback((product: Product) => {
-    Haptics.selectionAsync();
     setSelectedProduct(product);
   }, []);
 
-  // Proceed to checkout
+  // Proceed to checkout (triggered when user touches the Continue button)
   const handleProceedToCheckout = useCallback(() => {
     if (!isPhoneValid || !selectedNetwork || !selectedProduct) return;
-    Haptics.selectionAsync();
+    Keyboard.dismiss();
     setCheckoutMode("checkout");
-    checkoutSheetRef.current?.expand();
+    setTimeout(() => {
+      if (isMountedRef.current) {
+        checkoutSheetRef.current?.expand();
+      }
+    }, 50);
   }, [isPhoneValid, selectedNetwork, selectedProduct]);
 
-  // === PAYMENT WATERFALL (GUIDE SECTION 4) ===
+  // === PAYMENT WATERFALL ===
   const handleConfirmPayment = useCallback(async () => {
     if (!selectedProduct || !normalizedPhone) return;
 
     try {
-
-
-      // Get markup for this product
+      Keyboard.dismiss();
+      checkoutSheetRef.current?.close();
+      
       const supplierId = selectedProduct.supplierOffers?.[0]?.supplierId || "";
       const markup = markupMap.get(supplierId) || 0;
 
-      // Close checkout modal
-      checkoutSheetRef.current?.close();
-
-      // Initiate payment flow (handles biometric → PIN → transaction)
       const result = await processPayment({
         product: selectedProduct,
         phoneNumber: normalizedPhone,
         useCashback,
         markupPercent: markup,
         userCashbackBalance: cashbackBalance,
+        allowOperatorMismatch: !isAutoDetectionEnabled,
+        selectedOperatorCode: selectedNetwork?.toUpperCase(),
       });
 
-      if (result.success) return;
+      if (result.success) {
+        return;
+      }
 
-      // If biometric failed or PIN required, show PIN modal
       if (result.error?.includes("PIN")) {
         setPendingPaymentData({
           product: selectedProduct,
           phoneNumber: normalizedPhone,
           useCashback,
           markupPercent: markup,
+          allowOperatorMismatch: !isAutoDetectionEnabled,
+          selectedOperatorCode: selectedNetwork?.toUpperCase(),
         });
-        setShowPinModal(true);
+        setTimeout(() => {
+          if (!isMountedRef.current) return;
+          setShowPinModal(true);
+        }, 450);
       } else {
-        // Handle validation errors (e.g. Insufficient Balance) or other failures
         setLastErrorMessage(getUserFriendlyError(result.error || "Payment failed"));
-        setCheckoutMode("failed");
-        checkoutSheetRef.current?.expand();
+        setTimeout(() => {
+          if (!isMountedRef.current) return;
+          setCheckoutMode("failed");
+          checkoutSheetRef.current?.expand();
+        }, 400);
       }
     } catch (error) {
-
       const errorMsg = error instanceof Error ? error.message : "Payment processing failed";
       setLastErrorMessage(getUserFriendlyError(errorMsg));
-      setCheckoutMode("failed");
-      checkoutSheetRef.current?.expand();
+      setTimeout(() => {
+        if (!isMountedRef.current) return;
+        setCheckoutMode("failed");
+        checkoutSheetRef.current?.expand();
+      }, 400);
     }
-  }, [selectedProduct, normalizedPhone, useCashback, cashbackBalance, processPayment, markupMap]);
+  }, [selectedProduct, normalizedPhone, useCashback, cashbackBalance, processPayment, markupMap, isAutoDetectionEnabled, selectedNetwork]);
 
   const handlePinSubmit = useCallback(
     async (pin: string) => {
       if (!pendingPaymentData) return;
       try {
-        setPinError(undefined); // Clear previous error
+        setPinError(undefined);
 
-
-        // Submit PIN through the complete payment flow
         const result = await submitPIN({
           product: pendingPaymentData.product,
           phoneNumber: pendingPaymentData.phoneNumber,
-          useCashback: pendingPaymentData.useCashback,
+          useCashback,
           markupPercent: pendingPaymentData.markupPercent,
+          allowOperatorMismatch: pendingPaymentData.allowOperatorMismatch,
+          selectedOperatorCode: pendingPaymentData.selectedOperatorCode,
           pin: pin,
           userCashbackBalance: cashbackBalance,
         });
 
         if (!result.success) {
-          // Show error in PIN modal instead of closing it
           const friendlyError = getUserFriendlyError(result.error || "PIN verification failed");
           setPinError(friendlyError);
-          // Keep modal open so user can retry
         } else {
-          // Success - close modal
           setShowPinModal(false);
           setPinError(undefined);
         }
       } catch (error) {
-
         const errorMsg = error instanceof Error ? error.message : "PIN submission failed";
         const friendlyError = getUserFriendlyError(errorMsg);
         setPinError(friendlyError);
-        // Keep modal open so user can retry
       }
     },
-    [pendingPaymentData, submitPIN, cashbackBalance]
+    [pendingPaymentData, submitPIN, cashbackBalance, useCashback]
   );
 
-  // Retry after failure
   const handleRetry = useCallback(() => {
-    setCheckoutMode("checkout");
+    setTimeout(() => {
+      if (!isMountedRef.current) return;
+      setCheckoutMode("checkout");
+    }, 250);
   }, []);
 
-  // Close and reset
   const handleClose = useCallback(() => {
     checkoutSheetRef.current?.close();
     if (checkoutMode === "success") {
-      // Reset form after success
-      // Reset form after success - Keep phone/network for easier repeat transactions
-      // setPhoneNumber("");
-      // setSelectedNetwork(null); 
-      // setDetectedNetwork(null);
       setSelectedProduct(null);
       
-      // Check if user wants auto-redirect
-      const prefs = require("@/hooks/useAppPreferences").getAppPreferences();
+      const prefs = getAppPreferences();
       if (prefs.autoRedirectAfterPurchase) {
         setTimeout(() => {
-          router.push("/(tabs)");
-        }, 500);
+          if (!isMountedRef.current) return;
+          router.back();
+        }, 300);
       }
     }
   }, [checkoutMode, router]);
@@ -520,9 +507,7 @@ export function ProductPurchaseScreen({
             productName: selectedProduct.name,
             productType: selectedProduct.productType,
             recipientPhone: normalizedPhone,
-            // Use finalSellingPrice (after offer discount) as the display amount
             amount: priceDetails.finalSellingPrice,
-            // Only show originalAmount (strikethrough) if there's an offer discount
             originalAmount: priceDetails.hasOfferDiscount 
               ? priceDetails.baseSellingPrice 
               : undefined,
@@ -538,86 +523,98 @@ export function ProductPurchaseScreen({
         })()
       : null;
 
-  const canProceed = isPhoneValid && selectedNetwork && selectedProduct;
+  const productsLoadErrorMessage = useMemo(() => {
+    const status = (productsLoadError as any)?.response?.status;
 
-  // Optimize rendering with React.memo
-  const MemoizedProductItem = React.memo(
-    ({ item, isSelected, onSelect, markupPercent, isEligible, isGuest }: any) => (
-      <View style={{ width: CARD_WIDTH }}>
-        <ProductCard
-          product={item}
-          isSelected={isSelected}
-          onSelect={onSelect}
-          markupPercent={markupPercent}
-          isEligibleForOffer={isEligible}
-          isGuest={isGuest}
-        />
-      </View>
-    ),
-    (prevProps, nextProps) => {
-      return (
-        prevProps.isSelected === nextProps.isSelected &&
-        prevProps.item.id === nextProps.item.id &&
-        prevProps.isEligible === nextProps.isEligible
-      );
+    if (status === 401 || status === 403) {
+      return "Your session could not be verified. Please log in again.";
     }
-  );
+
+    return getUserFriendlyError(
+      productsLoadError instanceof Error
+        ? productsLoadError.message
+        : "Please check your connection and try again."
+    );
+  }, [productsLoadError]);
+
+  const selectedProductPrice = useMemo(() => {
+    if (!selectedProduct) return null;
+    const supplierId = selectedProduct.supplierOffers?.[0]?.supplierId || "";
+    const markup = markupMap.get(supplierId) || 0;
+    const priceDetails = calculateFinalPrice(
+      selectedProduct,
+      false,
+      0,
+      markup
+    );
+    return priceDetails.finalSellingPrice;
+  }, [selectedProduct, markupMap]);
+
+  const canProceed = Boolean(isPhoneValid && selectedNetwork && selectedProduct);
+
+  const selectedProductId = selectedProduct?.id;
 
   const renderProductItem = useCallback(
     ({ item }: { item: Product }) => (
-      <MemoizedProductItem
-        item={item}
-        isSelected={selectedProduct?.id === item.id}
-        onSelect={handleProductSelect}
-        markupPercent={getMarkupPercent(item)}
-        isEligible={isEligibleForOffer(item)}
-        isGuest={!user}
-
-      />
+      <View style={{ width: CARD_WIDTH }}>
+        <ProductCard
+          product={item}
+          isSelected={selectedProductId === item.id}
+          onSelect={handleProductSelect}
+          markupPercent={getMarkupPercent(item)}
+          isEligibleForOffer={isEligibleForOffer(item)}
+          isGuest={!user}
+        />
+      </View>
     ),
-    [selectedProduct, handleProductSelect, getMarkupPercent, isEligibleForOffer, user]
+    [selectedProductId, handleProductSelect, getMarkupPercent, isEligibleForOffer, user]
   );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen
         options={{
-          headerShown: true,
-          title,
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.foreground,
-          headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <ArrowLeft size={24} color={colors.foreground} />
-            </TouchableOpacity>
-          ),
+          headerShown: false,
         }}
       />
+
+      {/* Clean Custom Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
+        <TouchableOpacity
+          onPress={() => {
+            router.back();
+          }}
+          style={styles.backButton}
+          activeOpacity={0.7}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <ArrowLeft size={24} color={colors.foreground} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+          {title}
+        </Text>
+        <View style={styles.headerRightSpacer} />
+      </View>
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={100}
       >
-
-        {/* Phone Number Input */}
+        {/* Phone Number Input & Ported Number Option */}
         <View style={styles.section}>
           <NetworkDetectorInput
             value={phoneNumber}
             onChangeText={setPhoneNumber}
             onNetworkDetected={handleNetworkDetected}
+            autoDetectEnabled={isAutoDetectionEnabled}
           />
-
-          {/* Network Mismatch Warning */}
-          {networkMismatch && (
-            <Text style={[styles.warningText, { color: colors.warning }]}>
-              ⚠️ Phone number belongs to {detectedNetwork?.toUpperCase()}, but{" "}
-              {selectedNetwork?.toUpperCase()} is selected
-            </Text>
-          )}
+          <PortedNumberBypass
+            enabled={!isAutoDetectionEnabled}
+            onChange={(bypassEnabled) => {
+              setIsAutoDetectionEnabled(!bypassEnabled);
+            }}
+          />
         </View>
 
         {/* Network Selector */}
@@ -625,7 +622,7 @@ export function ProductPurchaseScreen({
           networks={networks}
           selectedNetwork={selectedNetwork}
           onSelect={handleNetworkSelect}
-          detectedNetwork={detectedNetwork}
+          detectedNetwork={isAutoDetectionEnabled ? detectedNetwork : null}
         />
 
         {/* Category Tabs */}
@@ -637,6 +634,7 @@ export function ProductPurchaseScreen({
             isLoading={categoriesLoading}
           />
         )}
+
         {/* Product Grid */}
         <View style={styles.flex}>
           {productsLoading ? (
@@ -645,6 +643,38 @@ export function ProductPurchaseScreen({
               <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
                 Loading plans...
               </Text>
+            </View>
+          ) : productsError ? (
+            <View style={styles.emptyContainer}>
+              <EmptyIcon size={48} color={colors.textDisabled} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                Unable to load plans right now
+              </Text>
+              <Text style={[styles.errorText, { color: colors.textDisabled }]}>
+                {productsLoadErrorMessage}
+              </Text>
+              <TouchableOpacity
+                style={[styles.retryButton, { backgroundColor: colors.primary }]}
+                onPress={() => refetchProducts()}
+                disabled={productsFetching}
+                activeOpacity={0.8}
+              >
+                {productsFetching ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.primaryForeground}
+                  />
+                ) : (
+                  <Text
+                    style={[
+                      styles.retryText,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
+                    Retry
+                  </Text>
+                )}
+              </TouchableOpacity>
             </View>
           ) : filteredProducts.length === 0 ? (
             <View style={styles.emptyContainer}>
@@ -661,52 +691,72 @@ export function ProductPurchaseScreen({
               renderItem={renderProductItem}
               keyExtractor={(item) => item.id}
               numColumns={NUM_COLUMNS}
+              extraData={selectedProductId}
               contentContainerStyle={styles.gridContent}
               columnWrapperStyle={styles.gridRow}
               showsVerticalScrollIndicator={false}
+              initialNumToRender={12}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews={Platform.OS === "android"}
             />
           )}
         </View>
+      </KeyboardAvoidingView>
 
-        {/* Footer with Continue Button */}
-        <View style={[styles.footer, { borderTopColor: colors.border }]}>
-          <View style={styles.footerInfo}>
-            <Text style={[styles.balanceLabel, { color: colors.textSecondary }]}>
-              Balance
-            </Text>
-            <Text style={[styles.balanceAmount, { color: colors.foreground }]}>
-              ₦{walletBalance.toLocaleString()}
-            </Text>
-          </View>
+      {/* Bottom Floating/Fixed Action Bar */}
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor: colors.card,
+            borderTopColor: colors.border,
+            paddingBottom: Math.max(insets.bottom, 12),
+          },
+        ]}
+      >
+        {/* Balance Section */}
+        <View style={styles.balanceContainer}>
+          <Text style={[styles.balanceLabel, { color: colors.textSecondary }]}>
+            Balance
+          </Text>
+          <Text style={[styles.balanceValue, { color: colors.foreground }]}>
+            ₦{walletBalance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+          </Text>
+        </View>
 
-          <TouchableOpacity
+        {/* Continue Button */}
+        <TouchableOpacity
+          style={[
+            styles.continueButton,
+            {
+              backgroundColor: canProceed
+                ? colors.primary
+                : isDark
+                ? "#334155"
+                : "#E2E8F0",
+            },
+          ]}
+          onPress={handleProceedToCheckout}
+          disabled={!canProceed}
+          activeOpacity={0.8}
+        >
+          <Text
             style={[
-              styles.continueButton,
+              styles.continueButtonText,
               {
-                backgroundColor: canProceed ? colors.primary : colors.muted,
+                color: canProceed
+                  ? colors.primaryForeground
+                  : colors.textDisabled,
               },
             ]}
-            onPress={handleProceedToCheckout}
-            disabled={!canProceed}
-            activeOpacity={0.8}
           >
-            <Text
-              style={[
-                styles.continueText,
-                {
-                  color: canProceed
-                    ? colors.primaryForeground
-                    : colors.textDisabled,
-                },
-              ]}
-            >
-              {selectedProduct
-                ? `Continue - ₦${getDisplayPrice(selectedProduct).toLocaleString()}`
-                : "Select a Plan"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+            {selectedProduct && selectedProductPrice !== null
+              ? `Continue - ₦${Math.round(selectedProductPrice).toLocaleString()}`
+              : "Select a Plan"}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Checkout Modal */}
       <CheckoutModal
@@ -755,94 +805,110 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: HORIZONTAL_PADDING,
+    paddingBottom: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    letterSpacing: -0.3,
+  },
+  headerRightSpacer: {
+    width: 24,
+  },
   backButton: {
     padding: designTokens.spacing.xs,
     marginLeft: -designTokens.spacing.xs,
   },
-  header: {
-    alignItems: "center",
-    paddingVertical: designTokens.spacing.md,
-    paddingHorizontal: designTokens.spacing.md,
-  },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: designTokens.spacing.sm,
-  },
-  headerTitle: {
-    fontSize: designTokens.fontSize.xl,
-    fontWeight: "700",
-    marginBottom: designTokens.spacing.xs,
-  },
-  headerSubtitle: {
-    fontSize: designTokens.fontSize.sm,
-    textAlign: "center",
-  },
   section: {
-    paddingHorizontal: designTokens.spacing.md,
-    marginTop: designTokens.spacing.lg,
-    marginBottom: designTokens.spacing.sm,
-  },
-  warningText: {
-    fontSize: designTokens.fontSize.sm,
-    marginTop: designTokens.spacing.xs,
+    paddingHorizontal: HORIZONTAL_PADDING,
+    marginTop: 10,
+    marginBottom: 4,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    gap: designTokens.spacing.md,
+    paddingVertical: designTokens.spacing.xxl,
   },
   loadingText: {
+    marginTop: designTokens.spacing.md,
     fontSize: designTokens.fontSize.sm,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    gap: designTokens.spacing.md,
     padding: designTokens.spacing.xl,
+    gap: designTokens.spacing.md,
   },
   emptyText: {
     fontSize: designTokens.fontSize.base,
+    fontWeight: "600",
     textAlign: "center",
   },
+  errorText: {
+    marginHorizontal: designTokens.spacing.lg,
+    fontSize: designTokens.fontSize.sm,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  retryButton: {
+    minWidth: 120,
+    height: 44,
+    borderRadius: designTokens.radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: designTokens.spacing.lg,
+  },
+  retryText: {
+    fontSize: designTokens.fontSize.sm,
+    fontWeight: "700",
+  },
   gridContent: {
-    padding: designTokens.spacing.md,
+    paddingHorizontal: HORIZONTAL_PADDING,
+    paddingTop: 4,
+    paddingBottom: 24,
   },
   gridRow: {
     gap: CARD_GAP,
     marginBottom: CARD_GAP,
   },
-  footer: {
+  bottomBar: {
     flexDirection: "row",
     alignItems: "center",
-    padding: designTokens.spacing.md,
+    justifyContent: "space-between",
+    paddingHorizontal: HORIZONTAL_PADDING,
+    paddingTop: 12,
     borderTopWidth: 1,
-    gap: designTokens.spacing.md,
+    gap: 16,
   },
-  footerInfo: {
-    alignItems: "flex-start",
+  balanceContainer: {
+    justifyContent: "center",
   },
   balanceLabel: {
-    fontSize: designTokens.fontSize.xs,
+    fontSize: 11,
+    fontWeight: "500",
+    marginBottom: 2,
   },
-  balanceAmount: {
-    fontSize: designTokens.fontSize.lg,
-    fontWeight: "600",
+  balanceValue: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   continueButton: {
     flex: 1,
-    paddingVertical: designTokens.spacing.md,
-    borderRadius: designTokens.radius.lg,
+    height: 48,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 16,
   },
-  continueText: {
-    fontSize: designTokens.fontSize.base,
-    fontWeight: "600",
+  continueButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

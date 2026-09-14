@@ -13,7 +13,6 @@ import {
 } from "@/lib/payment-flow";
 import {
   calculateFinalPrice,
-  getResolvedProductPrice,
   validatePurchase,
 } from "@/lib/price-calculator";
 import { Product } from "@/types/product.types";
@@ -59,6 +58,8 @@ export function useCompletePaymentFlow(
       markupPercent?: number; // Supplier markup percentage
       pin?: string; // If user provided PIN
       userCashbackBalance?: number;
+      allowOperatorMismatch?: boolean;
+      selectedOperatorCode?: string;
     }): Promise<PaymentFlowResult> => {
       try {
         setIsProcessing(true);
@@ -71,6 +72,8 @@ export function useCompletePaymentFlow(
           markupPercent = 0,
           pin,
           userCashbackBalance = 0,
+          allowOperatorMismatch = false,
+          selectedOperatorCode,
         } = args;
 
         const validation = validatePurchase(
@@ -132,13 +135,18 @@ export function useCompletePaymentFlow(
         }
 
         const topupRequest: TopupRequest = {
-          amount: getResolvedProductPrice(product), 
+          amount: priceDetails.finalSellingPrice,
           productCode: product.productCode,
           recipientPhone: phoneNumber,
           supplierSlug: product.supplierOffers?.[0]?.supplierSlug || "",
           supplierMappingId: product.supplierOffers?.[0]?.mappingId || "",
           useCashback: useCashback,
         };
+
+        if (allowOperatorMismatch && selectedOperatorCode) {
+          topupRequest.allowOperatorMismatch = true;
+          topupRequest.selectedOperatorCode = selectedOperatorCode;
+        }
 
         // Add authentication - PIN or biometric token (never both)
         if (verificationToken) {
@@ -184,7 +192,7 @@ export function useCompletePaymentFlow(
         setCurrentStep("idle");
       }
     },
-    [user, topupMutation, options]
+    [user, topupMutation, options, walletBalance]
   );
 
   /**
@@ -198,6 +206,8 @@ export function useCompletePaymentFlow(
       markupPercent?: number;
       pin: string;
       userCashbackBalance?: number;
+      allowOperatorMismatch?: boolean;
+      selectedOperatorCode?: string;
     }) => {
       return processPayment(args);
     },
@@ -220,6 +230,7 @@ export function useCompletePaymentFlow(
     isProcessing,
     currentStep,
     error,
-    isLoading: isProcessing || topupMutation.isPending,
+    isLoading:
+      (isProcessing && currentStep === "transaction") || topupMutation.isPending,
   };
 }

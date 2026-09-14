@@ -1,7 +1,7 @@
 /**
  * Airtime Purchase Screen - Simplified "Magic" Flow
  * 
- * New Flow:
+ * Flow:
  * 1. User enters Phone Number (Auto-detects network logo for UX)
  * 2. User enters Amount (Any value 50-50,000)
  * 3. System uses "GENERAL_AIRTIME" product code
@@ -14,40 +14,42 @@ import { Stack, useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import {
-    CheckoutData,
-    CheckoutModal,
-    CheckoutMode,
-    NetworkDetectorInput,
-    NetworkSelector
+  CheckoutData,
+  CheckoutModal,
+  CheckoutMode,
+  NetworkDetectorInput,
+  PortedNumberBypass,
+  NetworkSelector
 } from "@/components/purchase";
 import { PinPadModal } from "@/components/security/PinPadModal";
 import { designTokens } from "@/constants/palette";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompletePaymentFlow } from "@/hooks/useCompletePaymentFlow";
+import { useNetworkAutoDetectionPreference } from "@/hooks/useNetworkAutoDetectionPreference";
 import { useProducts } from "@/hooks/useProducts";
 import { useSupplierMarkupMap } from "@/hooks/useSupplierMarkup";
 import { useTopup } from "@/hooks/useTopup";
 import { useWalletBalance } from "@/hooks/useWalletBalance";
 import {
-    NETWORK_PROVIDERS,
-    NetworkInfo,
-    NetworkProvider,
-    isValidNigerianPhone,
-    normalizePhoneNumber,
+  NETWORK_PROVIDERS,
+  NetworkInfo,
+  NetworkProvider,
+  isValidNigerianPhone,
+  normalizePhoneNumber,
 } from "@/lib/detectNetwork";
 import { calculateFinalPrice } from "@/lib/price-calculator";
 import { Product } from "@/types/product.types";
@@ -63,7 +65,6 @@ export default function AirtimeScreen() {
   const [amount, setAmount] = useState("");
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkProvider | null>(null);
   const [detectedNetwork, setDetectedNetwork] = useState<NetworkProvider | null>(null);
-  const [networkMismatch, setNetworkMismatch] = useState(false);
   
   // Modals & Flows
   const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>("checkout");
@@ -75,6 +76,17 @@ export default function AirtimeScreen() {
   const [useCashback, setUseCashback] = useState(false);
 
   const checkoutSheetRef = useRef<BottomSheet>(null);
+  const isMountedRef = useRef(true);
+
+  // Cleanup: close BottomSheet before unmount to prevent Android
+  // NullPointerException in ViewGroup.dispatchGetDisplayList()
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      checkoutSheetRef.current?.close();
+    };
+  }, []);
 
   // === HOOKS ===
   const { data: productsData } = useProducts({
@@ -84,6 +96,8 @@ export default function AirtimeScreen() {
   const markupMap = useSupplierMarkupMap();
   const { balance: walletBalance } = useWalletBalance();
   const { user } = useAuth();
+  const { isAutoDetectionEnabled, setIsAutoDetectionEnabled } =
+    useNetworkAutoDetectionPreference();
   
   // Mutation state
   const { isPending: isTopupPending } = useTopup();
@@ -91,12 +105,14 @@ export default function AirtimeScreen() {
   // Payment Flow Hook
   const { processPayment, submitPIN, isLoading: isPaymentProcessing } = useCompletePaymentFlow({
     onSuccess: (transactionId) => {
+      if (!isMountedRef.current) return;
       setLastTransactionId(transactionId);
       setLastErrorMessage(null);
       setCheckoutMode("success");
       checkoutSheetRef.current?.expand();
     },
     onError: (error) => {
+      if (!isMountedRef.current) return;
       setLastErrorMessage(error);
       setCheckoutMode("failed");
       checkoutSheetRef.current?.expand();
@@ -106,6 +122,7 @@ export default function AirtimeScreen() {
   const cashbackBalance = user?.cashback?.availableBalance || 0;
   const normalizedPhone = normalizePhoneNumber(phoneNumber);
   const isPhoneValid = isValidNigerianPhone(normalizedPhone);
+  const selectedOperatorCode = selectedNetwork?.toUpperCase();
 
   // Validate Amount
   const numericAmount = parseFloat(amount.replace(/[^0-9.]/g, "") || "0");
@@ -149,14 +166,6 @@ export default function AirtimeScreen() {
   }, [productsData]);
 
   useEffect(() => {
-    if (detectedNetwork && selectedNetwork && detectedNetwork !== selectedNetwork) {
-      setNetworkMismatch(true);
-    } else {
-      setNetworkMismatch(false);
-    }
-  }, [detectedNetwork, selectedNetwork]);
-
-  useEffect(() => {
     if (!selectedNetwork && networks.length > 0) {
       setSelectedNetwork(networks[0].slug);
     }
@@ -182,14 +191,14 @@ export default function AirtimeScreen() {
   // === HANDLERS ===
   const handleNetworkDetected = useCallback((network: NetworkProvider | null) => {
     setDetectedNetwork(network);
-    if (network) {
+    if (isAutoDetectionEnabled && network) {
       const isAvailable = networks.some(n => n.slug === network);
       if (isAvailable && selectedNetwork !== network) {
         setSelectedNetwork(network);
         Haptics.selectionAsync();
       }
     }
-  }, [networks, selectedNetwork]);
+  }, [isAutoDetectionEnabled, networks, selectedNetwork]);
 
   const handleNetworkSelect = useCallback((network: NetworkProvider) => {
     Haptics.selectionAsync();
@@ -207,8 +216,6 @@ export default function AirtimeScreen() {
       productCode: "GENERAL_AIRTIME",
       denomAmount: numericAmount.toString(),
       type: "airtime",
-      // Include selected network in the product metadata if needed, 
-      // though backend handles routing.
       operator: selectedNetwork ? { name: selectedNetwork } : undefined
     } as unknown as Product;
   }, [numericAmount, isAmountValid, selectedNetwork]);
@@ -225,10 +232,9 @@ export default function AirtimeScreen() {
     if (!selectedProduct || !normalizedPhone) return;
 
     try {
-      // General Airtime usually has 0 markup, but we keep the logic structure
-      const markup = 0; 
-
       checkoutSheetRef.current?.close();
+      
+      const markup = 0; 
 
       const result = await processPayment({
         product: selectedProduct,
@@ -236,9 +242,13 @@ export default function AirtimeScreen() {
         useCashback,
         markupPercent: markup,
         userCashbackBalance: cashbackBalance,
+        allowOperatorMismatch: !isAutoDetectionEnabled,
+        selectedOperatorCode,
       });
 
-      if (result.success) return;
+      if (result.success) {
+        return;
+      }
 
       if (result.error?.includes("PIN")) {
         setPendingPaymentData({
@@ -246,20 +256,30 @@ export default function AirtimeScreen() {
           phoneNumber: normalizedPhone,
           useCashback,
           markupPercent: markup,
+          allowOperatorMismatch: !isAutoDetectionEnabled,
+          selectedOperatorCode,
         });
-        setShowPinModal(true);
+        setTimeout(() => setShowPinModal(true), 450);
       } else {
-        // Handle validation errors (e.g. Insufficient Balance) or other failures
         setLastErrorMessage(getUserFriendlyError(result.error || "Payment failed"));
-        setCheckoutMode("failed");
-        checkoutSheetRef.current?.expand();
+        setTimeout(() => {
+          setCheckoutMode("failed");
+          checkoutSheetRef.current?.expand();
+        }, 400);
       }
     } catch (error: any) {
       setLastErrorMessage(getUserFriendlyError(error.message || "Payment failed"));
-      setCheckoutMode("failed");
-      checkoutSheetRef.current?.expand();
+      setTimeout(() => setCheckoutMode("failed"), 400);
     }
-  }, [selectedProduct, normalizedPhone, useCashback, cashbackBalance, processPayment]);
+  }, [
+    selectedProduct,
+    normalizedPhone,
+    useCashback,
+    cashbackBalance,
+    processPayment,
+    isAutoDetectionEnabled,
+    selectedOperatorCode,
+  ]);
 
   const handlePinSubmit = useCallback(async (pin: string) => {
     if (!pendingPaymentData) return;
@@ -285,15 +305,19 @@ export default function AirtimeScreen() {
     checkoutSheetRef.current?.close();
     if (checkoutMode === "success") {
       setAmount("");
-      // setPhoneNumber(""); // Keep phone number for convenience
       const prefs = require("@/hooks/useAppPreferences").getAppPreferences();
       if (prefs.autoRedirectAfterPurchase) {
-        setTimeout(() => router.push("/(tabs)"), 500);
+        setTimeout(() => {
+          if (!isMountedRef.current) return;
+          router.replace("/(tabs)");
+        }, 400);
       }
     }
   }, [checkoutMode, router]);
 
-  const handleRetry = useCallback(() => setCheckoutMode("checkout"), []);
+  const handleRetry = useCallback(() => {
+    setTimeout(() => setCheckoutMode("checkout"), 250);
+  }, []);
 
   // === CHECKOUT DATA ===
   const checkoutData: CheckoutData | null = selectedProduct ? (() => {
@@ -305,7 +329,7 @@ export default function AirtimeScreen() {
       recipientPhone: normalizedPhone,
       amount: priceDetails.finalSellingPrice,
       originalAmount: undefined,
-      network: selectedNetwork || undefined, // Pass selected network for UI logo
+      network: selectedNetwork || undefined,
       transactionId: lastTransactionId || undefined,
       errorMessage: lastErrorMessage || undefined,
       bonusToEarn: priceDetails.bonusToEarn,
@@ -327,7 +351,17 @@ export default function AirtimeScreen() {
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.foreground,
           headerLeft: () => (
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <TouchableOpacity
+              onPress={() => {
+                checkoutSheetRef.current?.close();
+                setTimeout(() => {
+                  if (isMountedRef.current) {
+                    router.back();
+                  }
+                }, 350);
+              }}
+              style={styles.backButton}
+            >
               <ArrowLeft size={24} color={colors.foreground} />
             </TouchableOpacity>
           ),
@@ -348,12 +382,14 @@ export default function AirtimeScreen() {
               onChangeText={setPhoneNumber}
               onNetworkDetected={handleNetworkDetected}
               placeholder="0803 000 0000"
+              autoDetectEnabled={isAutoDetectionEnabled}
             />
-            {networkMismatch && (
-              <Text style={[styles.warningText, { color: colors.warning }]}>
-                ⚠️ Phone number belongs to {detectedNetwork?.toUpperCase()}, but {selectedNetwork?.toUpperCase()} is selected
-              </Text>
-            )}
+            <PortedNumberBypass
+              enabled={!isAutoDetectionEnabled}
+              onChange={(bypassEnabled) => {
+                setIsAutoDetectionEnabled(!bypassEnabled);
+              }}
+            />
           </View>
 
           {/* Network Selector */}
@@ -361,7 +397,7 @@ export default function AirtimeScreen() {
             networks={networks}
             selectedNetwork={selectedNetwork}
             onSelect={handleNetworkSelect}
-            detectedNetwork={detectedNetwork}
+            detectedNetwork={isAutoDetectionEnabled ? detectedNetwork : null}
           />
 
           {/* Amount Section */}
@@ -394,7 +430,7 @@ export default function AirtimeScreen() {
             </View>
           </View>
 
-          {/* Quick Amounts (Optional Helper) */}
+          {/* Quick Amounts */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 8 }]}>Quick Select</Text>
             <View style={styles.quickGrid}>
@@ -486,7 +522,6 @@ const styles = StyleSheet.create({
   scrollContent: { paddingVertical: designTokens.spacing.md },
   section: { paddingHorizontal: designTokens.spacing.md, marginBottom: designTokens.spacing.lg },
   sectionTitle: { fontSize: designTokens.fontSize.base, fontWeight: "600", marginBottom: designTokens.spacing.sm },
-  warningText: { fontSize: designTokens.fontSize.sm, marginTop: designTokens.spacing.xs },
   
   amountInputContainer: {
     flexDirection: "row",
