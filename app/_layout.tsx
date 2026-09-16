@@ -183,6 +183,7 @@ function RootLayoutNav() {
                   <Stack.Screen name="airtime" options={{ headerShown: false }} />
                   <Stack.Screen name="data" options={{ headerShown: false }} />
                   <Stack.Screen name="subscription" options={{ headerShown: false }} />
+                  <Stack.Screen name="smile" options={{ headerShown: false }} />
                   <Stack.Screen name="pay-bills" options={{ headerShown: false }} />
                   <Stack.Screen name="electricity" options={{ headerShown: false }} />
                   <Stack.Screen name="cable" options={{ headerShown: false }} />

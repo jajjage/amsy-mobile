@@ -105,6 +105,7 @@ export const CheckoutModal = forwardRef<BottomSheet, CheckoutModalProps>(
 
       // Determine product type based on product name
       const isData = data.productType === "data" ||
+                     data.productType === "plan" ||
                      data.productType === "subscription" ||
                      data.productName.toLowerCase().includes("data") || 
                      data.productName.toLowerCase().includes("gb") || 
@@ -317,9 +318,11 @@ export const CheckoutModal = forwardRef<BottomSheet, CheckoutModalProps>(
                     <Text style={[styles.detailValue, { color: colors.foreground }]}>
                       {data.productType === "subscription"
                         ? "Call Sub"
-                        : data.productName.includes("Airtime")
-                          ? "Airtime"
-                          : "Mobile Data"}
+                        : data.productType === "plan"
+                          ? "Smile Plan"
+                          : data.productName.includes("Airtime")
+                            ? "Airtime"
+                            : "Mobile Data"}
                     </Text>
                   </View>
                 </View>

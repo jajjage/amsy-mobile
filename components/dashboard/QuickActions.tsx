@@ -2,7 +2,7 @@
 // Following HOME_PAGE_GUIDE.md specifications
 import { useTheme } from "@/context/ThemeContext";
 import { useRouter } from "expo-router";
-import { BadgeCheck, GraduationCap, Grid, Phone, Tv, Wifi, Zap } from "lucide-react-native";
+import { BadgeCheck, GraduationCap, Grid, Phone, Smile, Tv, Wifi, Zap } from "lucide-react-native";
 import React from "react";
 import {
     Pressable,
@@ -30,6 +30,12 @@ const actions: QuickAction[] = [
     label: "Airtime",
     Icon: Phone,
     route: "/airtime",
+  },
+  {
+    id: "smile",
+    label: "Smile",
+    Icon: Smile,
+    route: "/smile",
   },
   {
     id: "subscription",
@@ -66,6 +72,11 @@ const actions: QuickAction[] = [
 export function QuickActions() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
+
+  React.useEffect(() => {
+    void router.prefetch("/data");
+    void router.prefetch("/smile" as any);
+  }, [router]);
 
   const handlePress = (route: string) => {
     console.log("Navigate to:", route);
@@ -140,4 +151,3 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
-
