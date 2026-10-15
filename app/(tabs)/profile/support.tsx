@@ -9,7 +9,7 @@ export default function SupportScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const colors = colorScheme === "dark" ? darkColors : lightColors;
-  const WHATSAPP_NUMBER = "+2347033776056"; // Replace with your support WhatsApp number
+  const WHATSAPP_NUMBER = "+2348143641053"; // Replace with your support WhatsApp number
   const WHATSAPP_MESSAGE = encodeURIComponent("Hello Amsy Support, I need help with my account.");
 
   const supportItems = [
